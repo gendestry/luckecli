@@ -1,0 +1,6 @@
+[submodule "lib/Utils"]
+	path = lib/Utils
+	url = https://github.com/gendestry/Utils
+[submodule "lib/json"]
+	path = lib/json
+	url = https://github.com/nlohmann/json
