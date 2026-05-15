@@ -230,7 +230,8 @@ bool CommandExecutor::list(const std::vector<std::string>&) {
         for (int i = 1; i < clientinfo->descriptions.size(); i++) {
             stream << ", " << clientinfo->descriptions[i].name;
         }
-        logger.println(" - {}: {} {}({}){}", clientinfo->index, stream.end(), Utils::Font::colorItalic, clientinfo->ip, Utils::Font::colorReset);
+        logger.print(" - {}: {} {}({}){}", clientinfo->index, stream.end(), Utils::Font::colorItalic, clientinfo->ip, Utils::Font::colorReset);
+        logger.println("{}{} v{}{}", Utils::Font::colorGreen, Utils::Font::colorItalic, clientinfo->version, Utils::Font::colorReset);
     }
     return true;
 }

@@ -93,6 +93,11 @@ void Heartbeat::packet_ingest() {
                 ClientInfo info;
                 info.index = currentIndex++;
                 info.ip = ip;
+                if (jarr.contains("version")) {
+                info.version = jarr["version"];
+
+                }
+
 
 
                 for (const auto& item : jarr["fixtures"]) {

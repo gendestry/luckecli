@@ -145,6 +145,7 @@ struct ClientInfo {
         std::string type;
     };
     uint32_t index;
+    std::string version = "outdated";
     std::string ip;
     std::vector<Description>descriptions;
     // std::string data;
