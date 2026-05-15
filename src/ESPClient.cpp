@@ -17,11 +17,11 @@ bool ESPClient::inited = false;
 SafeQueue<std::string> ESPClient::queue;
 
 ESPClient::ESPClient(std::string ip)
-    : ip_(std::move(ip)), logger("RESPONSE")
+    : ip_(std::move(ip)), logger("CONFIG")
 {
     if (!inited) {
         inited = true;
-        listen_thread = std::thread(&ESPClient::listen_ingest);
+        listen_thread = std::thread(&ESPClient::listen_ingest_tcp);
     }
 }
 
@@ -46,7 +46,7 @@ void ESPClient::stop() {
 void ESPClient::sendRequest(const std::string& request) const {
     int sock = socket(AF_INET, SOCK_STREAM, 0);
     if (sock < 0) {
-        perror("socket");
+        logger.error("Socket creation failed: {}", strerror(errno));
         return;
     }
 
@@ -56,7 +56,7 @@ void ESPClient::sendRequest(const std::string& request) const {
     inet_pton(AF_INET, ip_.c_str(), &addr.sin_addr);
 
     if (connect(sock, (sockaddr*)&addr, sizeof(addr)) < 0) {
-        perror("connect");
+        logger.error("Error connecting: {}", strerror(errno));
         close(sock);
         return;
     }
@@ -68,7 +68,7 @@ void ESPClient::sendRequest(const std::string& request) const {
 std::optional<std::string> ESPClient::sendRequestOpt(const std::string& request, std::chrono::milliseconds timeout) const {
     int sock = socket(AF_INET, SOCK_STREAM, 0);
     if (sock < 0) {
-        perror("socket");
+        logger.error("Socket creation failed: {}", strerror(errno));
         return std::nullopt;
     }
 
@@ -78,7 +78,7 @@ std::optional<std::string> ESPClient::sendRequestOpt(const std::string& request,
     inet_pton(AF_INET, ip_.c_str(), &addr.sin_addr);
 
     if (connect(sock, (sockaddr*)&addr, sizeof(addr)) < 0) {
-        perror("connect");
+        logger.error("Error connecting: {}", strerror(errno));
         close(sock);
         return std::nullopt;
     }
@@ -113,10 +113,19 @@ void ESPClient::run(const std::string& request, bool jsonres, std::chrono::milli
     else {
         logger.error("{}", response);
     }
-
 };
 
-void ESPClient::listen_ingest() {
+std::string ESPClient::runStr(const std::string& request, bool jsonres, std::chrono::milliseconds timeout){
+    auto result = sendRequestOpt(request, timeout);
+    if (!result) {
+        logger.error("No response");
+        return "";
+    }
+
+    return result.value();
+};
+
+void ESPClient::listen_ingest_udp() {
     int sock = socket(AF_INET, SOCK_DGRAM, 0);
 
     sockaddr_in addr{};
@@ -145,4 +154,72 @@ void ESPClient::listen_ingest() {
     }
 
     close(sock);
+}
+
+void ESPClient::listen_ingest_tcp()
+{
+    Utils::Logger logger("LISTEN");
+    int serverSock = socket(AF_INET, SOCK_STREAM, 0);
+    if (serverSock < 0)
+    {
+        logger.error("Socket creation failed: {}", strerror(errno));
+        return;
+    }
+
+    int opt = 1;
+    setsockopt(serverSock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+
+    sockaddr_in addr{};
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(12345);
+    addr.sin_addr.s_addr = INADDR_ANY;
+
+    if (bind(serverSock, (sockaddr*)&addr, sizeof(addr)) < 0)
+    {
+        logger.error("Cannot bind: {}", strerror(errno));
+        close(serverSock);
+        return;
+    }
+
+    if (listen(serverSock, 5) < 0)
+    {
+        logger.error("Cannot listen: {}", strerror(errno));
+        close(serverSock);
+        return;
+    }
+
+    while (running)
+    {
+        sockaddr_in clientAddr{};
+        socklen_t len = sizeof(clientAddr);
+
+        int clientSock = accept(serverSock, (sockaddr*)&clientAddr, &len);
+
+        if (clientSock < 0)
+        {
+            if (running) {
+                logger.error("Accept: {}", strerror(errno));
+            }
+            continue;
+        }
+
+        char ipbuf[INET_ADDRSTRLEN];
+        inet_ntop(AF_INET, &clientAddr.sin_addr, ipbuf, sizeof(ipbuf));
+
+        while (running)
+        {
+            char buffer[4096];
+            ssize_t n = recv(clientSock, buffer, sizeof(buffer), 0);
+
+            if (n <= 0)
+                break;
+
+            std::string msg(buffer, n);
+            queue.push(msg);
+        }
+
+        close(clientSock);
+    }
+
+    close(serverSock);
 }

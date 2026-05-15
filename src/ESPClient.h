@@ -16,7 +16,8 @@ class ESPClient {
     static SafeQueue<std::string> queue;
 
     static bool inited;
-    static void listen_ingest();
+    static void listen_ingest_udp();
+    static void listen_ingest_tcp();
 
     std::optional<std::string> sendRequestOpt(const std::string& request, std::chrono::milliseconds timeout) const;
 public:
@@ -27,6 +28,7 @@ public:
 
     void sendRequest(const std::string& request) const;
     void run(const std::string& request, bool jsonres = false, std::chrono::milliseconds timeout = 2000ms);
+    std::string runStr(const std::string& request, bool jsonres = false, std::chrono::milliseconds timeout = 2000ms);
 
     const std::string& getIP() const {
         return ip_;

@@ -172,4 +172,12 @@ public:
 
     std::vector<ClientInfo*> getClients();
     uint32_t size();
+
+    const ClientInfo& operator[] (const std::string& ip) {
+        if (clients.contains(ip)) {
+            return clients[ip];
+        }
+        throw std::logic_error("Unknown client ip");
+
+    }
 };
