@@ -35,6 +35,9 @@ bool CommandExecutor::resolveCommand(const std::string& line) {
         if (commandsSelected.contains(cmd) && commandsSelected[cmd].func(args)) {
 
         }
+        else if (cmd.empty()) {
+            get_fixture_config();
+        }
         else {
             logger.error("Invalid command: {}", line);
         }
@@ -73,7 +76,7 @@ void CommandExecutor::bindcommands() {
         .desc = "Lists available items",
         .usage = "list or <ENTER>",
         .func = [this](const std::vector<std::string>& args) {
-            return list(args);
+            return list();
         }
     };
     commands["select"] = CmdInfo{
@@ -82,6 +85,15 @@ void CommandExecutor::bindcommands() {
         .usage = "select <number> or <number>",
         .func = [this](const std::vector<std::string>& args) {
             return select(args);
+        }
+    };
+
+    commands["config"] = CmdInfo{
+        .name = "config",
+        .desc ="Prints all config",
+        .usage = "config",
+        .func = [this](const std::vector<std::string>& args) {
+            return all_config();
         }
     };
 
@@ -139,7 +151,7 @@ void CommandExecutor::bindcommands() {
         .desc = "Return to previous menu",
         .usage = "back",
         .func = [this](const std::vector<std::string>& args) {
-            return deselect(args);
+            return deselect();
         }
     };
 
@@ -233,6 +245,18 @@ bool CommandExecutor::list(const std::vector<std::string>&) {
         logger.print(" - {}: {} {}({}){}", clientinfo->index, stream.end(), Utils::Font::colorItalic, clientinfo->ip, Utils::Font::colorReset);
         logger.println("{}{} v{}{}", Utils::Font::colorGreen, Utils::Font::colorItalic, clientinfo->version, Utils::Font::colorReset);
     }
+    return true;
+}
+
+bool CommandExecutor::all_config(const std::vector<std::string>&) {
+    const auto& allclients = heartbeat.getClients();
+    for (int i = 0; i < allclients.size(); i++) {
+        auto& client = allclients[i];
+        select({std::to_string(i)});
+        get_fixture_config();
+        deselect();
+    }
+
     return true;
 }
 
@@ -385,12 +409,9 @@ bool CommandExecutor::get_fixture_info(const std::vector<std::string>& args) {
 }
 
 bool CommandExecutor::get_fixture_config(const std::vector<std::string>& args) {
-    std::string cmd = args[0];
-
     uint32_t id = args.size() == 2 ? std::stoi(args[1]) : 0;
-    client->run(JSONtemp::stringify("getfixture", "id", id, "value", cmd), true);
+    client->run(JSONtemp::stringify("getfixture", "id", id, "value", "config"), true);
     return true;
-    return false;
 }
 
 bool CommandExecutor::set_fixture_info(const std::vector<std::string> & args) {
