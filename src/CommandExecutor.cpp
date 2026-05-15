@@ -19,6 +19,11 @@ bool CommandExecutor::resolveCommand(const std::string& line) {
     auto args = Utils::String::split(Utils::String::normalize_spaces(line), " ");
     const std::string& cmd = args.empty() ? "" : args[0];
 
+    if (cmd == "exit") {
+        exit();
+        return true;
+    }
+
     if (!selected)
     {
         if (commands.contains(cmd) && commands[cmd].func(args)) {
@@ -29,6 +34,9 @@ bool CommandExecutor::resolveCommand(const std::string& line) {
         }
         else if (Utils::String::isInt(cmd)) {
             select(args);
+        }
+        else {
+            logger.error("Invalid command: {}", line);
         }
     }
     else {
@@ -113,8 +121,8 @@ void CommandExecutor::bindcommands() {
         return set_fixture_info(args);
     };
 
-    commandsSelected["exit"] = commands["exit"];
-    commandsSelected["help"] = commands["help"];
+    // commandsSelected["exit"] = commands["exit"];
+    // commandsSelected["help"] = commands["help"];
 
     commandsSelected["wifianimation"] = CmdInfo{
         .name = "wifianimation",
@@ -236,7 +244,7 @@ bool CommandExecutor::reboot(const std::vector<std::string>&) {
 
 bool CommandExecutor::list(const std::vector<std::string>&) {
     logger.println("Fixtures online:");
-    for (ClientInfo* clientinfo : heartbeat.getClients()) {
+    for (auto clientinfo : heartbeat.getClients()) {
         Utils::Text::Stream stream;
         stream << clientinfo->descriptions[0].name;
         for (int i = 1; i < clientinfo->descriptions.size(); i++) {

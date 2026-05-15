@@ -24,14 +24,14 @@ struct CmdInfo {
      cmdFunc func;
 };
 
-struct CmdCache {
-     std::list<CmdInfo> cmds;
-     std::unordered_map<std::string, CmdInfo> commands;
-     std::unordered_map<std::string, CmdInfo> commandsSelected;
-
-     CmdInfo findCommand(const std::string& name) {}
-
-};
+// struct CmdCache {
+//      std::list<CmdInfo> cmds;
+//      std::unordered_map<std::string, CmdInfo> commands;
+//      std::unordered_map<std::string, CmdInfo> commandsSelected;
+//
+//      // CmdInfo findCommand(const std::string& name) { }
+//
+// };
 
 
 class CommandExecutor {

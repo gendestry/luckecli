@@ -129,6 +129,7 @@
 //
 // #endif //UTILS_HEARTBEAT_H
 #pragma once
+#include <memory>
 #include <string>
 #include <thread>
 #include <vector>
@@ -153,7 +154,7 @@ struct ClientInfo {
 
 class Heartbeat {
     std::unordered_map<std::string, ClientInfo> clients;
-    std::vector<ClientInfo*> clients_list;
+    std::vector<std::shared_ptr<ClientInfo>> clients_list;
 
     std::atomic<bool> running_ingest{false};
     std::mutex clients_mutex;
@@ -171,7 +172,7 @@ public:
 
     void stop();
 
-    std::vector<ClientInfo*> getClients();
+    std::vector<std::shared_ptr<ClientInfo>> getClients();
     uint32_t size();
 
     const ClientInfo& operator[] (const std::string& ip) {

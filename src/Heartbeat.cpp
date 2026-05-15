@@ -94,11 +94,8 @@ void Heartbeat::packet_ingest() {
                 info.index = currentIndex++;
                 info.ip = ip;
                 if (jarr.contains("version")) {
-                info.version = jarr["version"];
-
+                    info.version = jarr["version"];
                 }
-
-
 
                 for (const auto& item : jarr["fixtures"]) {
                     ClientInfo::Description f;
@@ -108,7 +105,7 @@ void Heartbeat::packet_ingest() {
                     info.descriptions.push_back(std::move(f));
                 }
                 clients[ip] = std::move(info);
-                clients_list.push_back(&clients[ip]);
+                clients_list.push_back(std::make_shared<ClientInfo>(clients[ip]));
             } else {
                 std::vector<ClientInfo::Description> descs;
                 for (const auto& item : jarr["fixtures"]) {
@@ -128,7 +125,7 @@ void Heartbeat::packet_ingest() {
     close(sock);
 }
 
-std::vector<ClientInfo*> Heartbeat::getClients() {
+std::vector<std::shared_ptr<ClientInfo>> Heartbeat::getClients() {
     std::lock_guard lock(clients_mutex);
     return clients_list;
 }
