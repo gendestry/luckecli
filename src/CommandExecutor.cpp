@@ -416,9 +416,36 @@ bool CommandExecutor::get_fixture_info(const std::vector<std::string>& args) {
     return false;
 }
 
+struct FixtureConfig {
+    int id{};
+    std::string name;
+    std::string type;
+    int universe{};
+    int address{};
+    int presetIndex{};
+    int numPresets{};
+};
+
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(
+    FixtureConfig, id, name, type, universe, address, presetIndex, numPresets
+)
+
 bool CommandExecutor::get_fixture_config(const std::vector<std::string>& args) {
     uint32_t id = args.size() == 2 ? std::stoi(args[1]) : 0;
-    client->run(JSONtemp::stringify("getfixture", "id", id, "value", "config"), true);
+    auto ret = client->runStr(JSONtemp::stringify("getfixture", "id", id, "value", "config"), false);
+    using json = nlohmann::json;
+
+    json data = json::parse(ret);
+
+    json respjson = json::parse(data["response"].get<std::string>());
+    auto cfg = respjson["value"].get<FixtureConfig>();
+
+    logger.println("Fixture '{}' info:", cfg.name);
+    logger.println(" - universe: {}", cfg.universe);
+    logger.println(" - address: {}", cfg.address);
+    logger.println(" - selected preset: {}", cfg.presetIndex);
+    logger.println(" - number of presets: {}", cfg.numPresets);
+    logger.println(" - type: '{}'", cfg.type);
     return true;
 }
 

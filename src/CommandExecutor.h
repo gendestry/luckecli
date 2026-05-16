@@ -22,6 +22,10 @@ struct CmdInfo {
      std::string usage;
      using cmdFunc = std::function<bool(const std::vector<std::string>&)>;
      cmdFunc func;
+
+     // CmdInfo();
+     // CmdInfo(std::string name, std::string desc, std::string usage, cmdFunc func)
+     //      : name(std::move(name)), desc(std::move(desc)), usage(std::move(usage)), func(std::move(func)) {}
 };
 
 // struct CmdCache {
@@ -31,6 +35,17 @@ struct CmdInfo {
 //
 //      // CmdInfo findCommand(const std::string& name) { }
 //
+// };
+
+// struct Help : public CmdInfo{
+//      // .name = "help",
+//      // .desc ="Prints help",
+//      // .usage = "help",
+//      // .func = [this](const std::vector<std::string>& args) {
+//      //      return help(args);
+//      // }
+//
+//      Help(cmdFunc func) : CmdInfo("help", "Prints Help", "help command?", std::move(func)){}
 // };
 
 
