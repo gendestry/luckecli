@@ -10,6 +10,7 @@
 #include <list>
 
 #include "Utils/Logging/Logger.h"
+#include "Command.h"
 
 struct CmdInfo {
      enum class Usable {
@@ -37,17 +38,6 @@ struct CmdInfo {
 //
 // };
 
-// struct Help : public CmdInfo{
-//      // .name = "help",
-//      // .desc ="Prints help",
-//      // .usage = "help",
-//      // .func = [this](const std::vector<std::string>& args) {
-//      //      return help(args);
-//      // }
-//
-//      Help(cmdFunc func) : CmdInfo("help", "Prints Help", "help command?", std::move(func)){}
-// };
-
 
 class CommandExecutor {
 
@@ -56,7 +46,10 @@ class CommandExecutor {
      std::unordered_map<std::string, CmdInfo> commandsSelected;
      Heartbeat heartbeat;
 
+     CommandList cmdlist;
+
      bool selected = false;
+     bool exitRequest = false;
 
      Utils::Logger logger;
 
@@ -69,6 +62,7 @@ public:
 //     }
 //
      bool isSelected() { return selected; }
+     bool shouldQuit() { return exitRequest;}
      bool resolveCommand(const std::string& line);
 //
      bool exit(const std::vector<std::string>& = {});

@@ -13,7 +13,8 @@ int main() {
 
     std::string line;
     while (std::getline(std::cin, line)) {
-        if (exec.resolveCommand(line)) {
+        auto resolved = exec.resolveCommand(line);
+        if (exec.shouldQuit()) {
             break;
         }
     }
