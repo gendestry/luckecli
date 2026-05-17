@@ -4,3 +4,6 @@
 [submodule "lib/json"]
 	path = lib/json
 	url = https://github.com/nlohmann/json
+[submodule "lib/FTXUI"]
+	path = lib/FTXUI
+	url = git@github.com:ArthurSonzogni/FTXUI.git

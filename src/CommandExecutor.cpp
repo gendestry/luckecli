@@ -8,6 +8,9 @@
 #include <iostream>
 #include <ranges>
 #include <nlohmann/json.hpp>
+#include "HELP.h"
+
+Utils::Text::Stream CommandExecutor::stream;
 
 CommandExecutor::CommandExecutor()
     : logger("Command") {
@@ -68,30 +71,42 @@ bool CommandExecutor::resolveCommand(const std::string& line) {
 }
 
 void CommandExecutor::bindcommands() {
+    cmdlist.registerGroup("Generic");
+
     cmdlist.registerCommand(Command("exit", "Exits the program", "exit",
 [this](const std::vector<std::string>& args) {
         return exit(args);
-    }), CommandList::Usable::ANYTIME);
+    }), Command::Usable::ANYTIME);
 
     cmdlist.registerCommand(Command("help", "Prints help", "help",
     [this](const std::vector<std::string>& args) {
         return help(args);
-    }), CommandList::Usable::ANYTIME);
+    }), Command::Usable::ANYTIME);
 
     cmdlist.registerCommand(Command("list", "Lists available items", "list or <ENTER>",
     [this](const std::vector<std::string>& args) {
         return this->list();
-    }), CommandList::Usable::UNSELECTED);
+    }), Command::Usable::UNSELECTED);
 
     cmdlist.registerCommand(Command("select", "Select an item", "select <number> or <number>",
     [this](const std::vector<std::string>& args) {
         return select(args);
-    }), CommandList::Usable::UNSELECTED);
+    }), Command::Usable::UNSELECTED);
 
     cmdlist.registerCommand(Command("config", "Prints all config", "config",
     [this](const std::vector<std::string>& args) {
         return all_config();
-    }), CommandList::Usable::UNSELECTED);
+    }), Command::Usable::UNSELECTED);
+
+    cmdlist.registerCommand(Command("back", "Return to previous menu", "back",
+    [this](const std::vector<std::string>& args) {
+        return deselect();
+    }), Command::Usable::SELECTED);
+
+    cmdlist.registerCommand(Command("reboot", "Reboot device", "reboot",
+    [this](const std::vector<std::string>& args) {
+        return reboot(args);
+    }), Command::Usable::SELECTED);
 
     auto task_config_cmd = [this](const std::vector<std::string>& args) {
         return task_config(args);
@@ -109,88 +124,88 @@ void CommandExecutor::bindcommands() {
         return set_fixture_info(args);
     };
 
+    cmdlist.registerGroup("Engine config");
+
     // ---------- selected commands ----------
     cmdlist.registerCommand(Command("wifianimation", "Configure WiFi animation task", "wifianimation <true/false>?",
-    task_config_cmd), CommandList::Usable::SELECTED);
+    task_config_cmd), Command::Usable::SELECTED);
 
     cmdlist.registerCommand(Command("serialprint", "Print or configure serial print", "serialprint <true/false>?",
-    task_config_cmd), CommandList::Usable::SELECTED);
+    task_config_cmd), Command::Usable::SELECTED);
 
     cmdlist.registerCommand(Command("wirelessprint", "Print or configure wireless print", "wirelessprint <true/false>?",
-    task_config_cmd), CommandList::Usable::SELECTED);
+    task_config_cmd), Command::Usable::SELECTED);
 
     cmdlist.registerCommand(Command("setwifi", "Configure WiFi settings", "setwifi ssid <value> pass <value>",
     [this](const std::vector<std::string>& args) {
         return setwifi(args);
-    }), CommandList::Usable::SELECTED);
+    }), Command::Usable::SELECTED);
 
-    cmdlist.registerCommand(Command("back", "Return to previous menu", "back",
-    [this](const std::vector<std::string>& args) {
-        return deselect();
-    }), CommandList::Usable::SELECTED);
 
-    cmdlist.registerCommand(Command("reboot", "Reboot device", "reboot",
-    [this](const std::vector<std::string>& args) {
-        return reboot(args);
-    }), CommandList::Usable::SELECTED);
-
+    cmdlist.registerGroup("Engine info");
 
     // ---------- grouped info commands ----------
     cmdlist.registerCommand(Command("describe", "Show info", "describe",
-    get_info_cmd), CommandList::Usable::SELECTED);
+    get_info_cmd), Command::Usable::SELECTED);
 
     cmdlist.registerCommand(Command("fixtures", "Show fixtures info", "fixtures",
-    get_info_cmd), CommandList::Usable::SELECTED);
+    get_info_cmd), Command::Usable::SELECTED);
 
     cmdlist.registerCommand(Command("inputs", "Show inputs info", "inputs",
-    get_info_cmd), CommandList::Usable::SELECTED);
+    get_info_cmd), Command::Usable::SELECTED);
 
     cmdlist.registerCommand(Command("presets", "Show presets info", "presets",
     [this](const std::vector<std::string>& args) {
         return presets(args);
-    }), CommandList::Usable::SELECTED);
+    }), Command::Usable::SELECTED);
 
     cmdlist.registerCommand(Command("ip", "Show IP info", "",
     [this](const std::vector<std::string>& args) {
         client->run(JSONtemp::stringify(args[0]), false);
         return true;
-    }), CommandList::Usable::SELECTED);
+    }), Command::Usable::SELECTED);
 
+
+    cmdlist.registerGroup("Fixture info");
 
     // ---------- fixture getters ----------
     cmdlist.registerCommand(Command("name", "Get fixture name", "name <number=0>?",
-    get_fixture_info_cmd), CommandList::Usable::SELECTED);
+    get_fixture_info_cmd), Command::Usable::SELECTED);
 
     cmdlist.registerCommand(Command("universe", "Get fixture universe", "universe <number=0>?",
-    get_fixture_info_cmd), CommandList::Usable::SELECTED);
+    get_fixture_info_cmd), Command::Usable::SELECTED);
 
     cmdlist.registerCommand(Command("address", "Get fixture address", "address <number=0>?",
-    get_fixture_info_cmd), CommandList::Usable::SELECTED);
+    get_fixture_info_cmd), Command::Usable::SELECTED);
 
     cmdlist.registerCommand(Command("preset", "Get fixture preset", "preset <number=0>?",
-    get_fixture_info_cmd), CommandList::Usable::SELECTED);
+    get_fixture_info_cmd), Command::Usable::SELECTED);
 
     cmdlist.registerCommand(Command("highlight", "Highlight fixture", "highlight <number=0>?",
-    get_fixture_info_cmd), CommandList::Usable::SELECTED);
+    get_fixture_info_cmd), Command::Usable::SELECTED);
 
     cmdlist.registerCommand(Command("config", "Get full fixture config", "config <number=0>?",
     [this](const std::vector<std::string>& args) {
         return get_fixture_config(args);
-    }), CommandList::Usable::SELECTED);
+    }), Command::Usable::SELECTED);
 
+
+    cmdlist.registerGroup("Fixture config");
 
     // ---------- fixture setters ----------
     cmdlist.registerCommand(Command("setname", "Set fixture name", "setname <string> <number=0>?",
-    set_fixture_info_cmd), CommandList::Usable::SELECTED);
+    set_fixture_info_cmd), Command::Usable::SELECTED);
 
     cmdlist.registerCommand(Command("setuniverse", "Set fixture universe", "setuniverse <number> <number=0>?",
-    set_fixture_info_cmd), CommandList::Usable::SELECTED);
+    set_fixture_info_cmd), Command::Usable::SELECTED);
 
     cmdlist.registerCommand(Command("setaddress", "Set fixture address", "setaddress <number> <number=0>?",
-    set_fixture_info_cmd), CommandList::Usable::SELECTED);
+    set_fixture_info_cmd), Command::Usable::SELECTED);
 
     cmdlist.registerCommand(Command("setpreset", "Set fixture preset", "setpreset <number> <number=0>?",
-    set_fixture_info_cmd), CommandList::Usable::SELECTED);
+    set_fixture_info_cmd), Command::Usable::SELECTED);
+
+    cmdlist.pushGroup();
 }
 
 bool CommandExecutor::exit(const std::vector<std::string>&) {
@@ -205,48 +220,69 @@ bool CommandExecutor::help(const std::vector<std::string>& args) {
     if (args.size() == 2) {
         auto info = cmdlist.get(args[1]);
         if (info) {
-            logger.println(" Help for command {}", info->get().name);
-            logger.println(" - description: {}{}{}{}",Utils::Font::colorByRGB(100, 100, 100), Utils::Font::colorItalic, info->get().desc, Utils::Font::colorReset);
-            logger.println(" - usage: {}{}{}{}",Utils::Font::colorByRGB(100, 100, 100), Utils::Font::colorItalic, info->get().usage, Utils::Font::colorReset);
+            logger.println(" Help for command {}", info.value()->name);
+            logger.println(" - description: {}{}{}{}",Utils::Font::colorByRGB(100, 100, 100), Utils::Font::colorItalic, info.value()->desc, Utils::Font::colorReset);
+            logger.println(" - usage: {}{}{}{}",Utils::Font::colorByRGB(100, 100, 100), Utils::Font::colorItalic, info.value()->usage, Utils::Font::colorReset);
             return true;
         }
         logger.println("Command {} does not exist", args[1]);
         return false;
     }
 
-    logger.println("Help:");
-    auto& anytime    = cmdlist.commandsMap[CommandList::Usable::ANYTIME];
-    auto& specific   = cmdlist.commandsMap[selected
-                            ? CommandList::Usable::SELECTED
-                            : CommandList::Usable::UNSELECTED];
+    for (auto& group : cmdlist.groups) {
+        bool found = false;
+        for (auto& cmds : group.commands) {
+
+            if (cmds->isUsable(Command::Usable::ANYTIME) || cmds ->isUsable(selected? Command::Usable::SELECTED : Command::Usable::UNSELECTED)) {
+                if (!found) {
+                    logger.println("{}", group.name);
+                    found = true;
+                }
+                logger.println(
+                    " - {}: {}{}{}{}",
+                    cmds->name,
+                    Utils::Font::colorByRGB(100, 100, 100),
+                    Utils::Font::colorItalic,
+                    cmds->desc,
+                    Utils::Font::colorReset
+                );
+            }
+        }
+    }
+
+    // logger.println("Help:");
+    // auto& anytime    = cmdlist.commandsMap[Command::Usable::ANYTIME];
+    // auto& specific   = cmdlist.commandsMap[selected
+    //                         ? Command::Usable::SELECTED
+                            // : Command::Usable::UNSELECTED];
 //     auto combined = std::views::concat(
 //     anytime | std::views::values,
 //     specific | std::views::values
 // );
 
-    for (auto& value : anytime | std::views::values)
-    {
-        logger.println(
-            " - {}: {}{}{}{}",
-            value.name,
-            Utils::Font::colorByRGB(100, 100, 100),
-            Utils::Font::colorItalic,
-            value.desc,
-            Utils::Font::colorReset
-        );
-    }
-
-    for (auto& value : specific | std::views::values)
-    {
-        logger.println(
-            " - {}: {}{}{}{}",
-            value.name,
-            Utils::Font::colorByRGB(100, 100, 100),
-            Utils::Font::colorItalic,
-            value.desc,
-            Utils::Font::colorReset
-        );
-    }
+    // for (auto& value : anytime | std::views::values)
+    // {
+    //     logger.println(
+    //         " - {}: {}{}{}{}",
+    //         value.name,
+    //         Utils::Font::colorByRGB(100, 100, 100),
+    //         Utils::Font::colorItalic,
+    //         value.desc,
+    //         Utils::Font::colorReset
+    //     );
+    // }
+    //
+    // for (auto& value : specific | std::views::values)
+    // {
+    //     logger.println(
+    //         " - {}: {}{}{}{}",
+    //         value.name,
+    //         Utils::Font::colorByRGB(100, 100, 100),
+    //         Utils::Font::colorItalic,
+    //         value.desc,
+    //         Utils::Font::colorReset
+    //     );
+    // }
     // const auto& submap = cmdlist.commandsMap[selected ? CommandList::Usable::SELECTED : CommandList::Usable::UNSELECTED];
     // for (auto& [_, value] : submap) {
     //     logger.println(" - {}: {}{}{}{}", value.name, Utils::Font::colorByRGB(100, 100, 100), Utils::Font::colorItalic, value.desc, Utils::Font::colorReset);

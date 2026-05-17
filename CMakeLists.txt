@@ -8,12 +8,13 @@ set(CMAKE_CXX_STANDARD_REQUIRED True)
 
 add_subdirectory(lib/json)
 add_subdirectory(lib/Utils)
+add_subdirectory(lib/FTXUI)
 
 file(GLOB_RECURSE SOURCES src/*.cpp)
 
 add_executable(${PROJECT_NAME} ${SOURCES})
 
-target_link_libraries(${PROJECT_NAME} PRIVATE utils nlohmann_json)
+target_link_libraries(${PROJECT_NAME} PRIVATE utils nlohmann_json ftxui)
 target_include_directories(${PROJECT_NAME}
         PUBLIC
         include

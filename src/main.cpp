@@ -1,3 +1,6 @@
+// #define FXTUI
+
+#ifndef FXTUI
 #include <iostream>
 #include <string>
 
@@ -22,6 +25,136 @@ int main() {
     return 0;
 }
 
+#else
+
+#include <ftxui/component/component.hpp>
+#include <ftxui/component/screen_interactive.hpp>
+#include <ftxui/dom/elements.hpp>
+#include "CommandExecutor.h"
+
+
+#include <string>
+#include <vector>
+
+using namespace ftxui;
+
+int main() {
+    auto screen = ScreenInteractive::Fullscreen();
+    CommandExecutor exec;
+  // --- fake data (clients) ---
+  std::vector<std::string> clients = {
+    "miza (192.168.0.140)",
+    "debug (192.168.0.143)",
+    "pojsla-side (192.168.0.8)",
+  };
+
+  // --- console content ---
+  std::vector<std::string> log = {
+    "Console started...",
+    "Waiting for connections..."
+  };
+
+  // --- input state ---
+  std::string input;
+
+  // ========== RIGHT PANEL (clients) ==========
+  auto clients_component = Renderer([&] {
+    Elements items;
+    for (auto &c : clients)
+      items.push_back(text(c));
+
+    return vbox({
+      text("ONLINE CLIENTS") | bold,
+      separator(),
+      vbox(items) | border,
+    });
+  });
+
+  // ========== LEFT TOP (console) ==========
+  auto console_component = Renderer([&] {
+    Elements lines;
+    for (auto &l : log)
+      lines.push_back(text(l));
+
+    return vbox(lines) | flex | border;
+  });
+
+  // ========== LEFT BOTTOM (input) ==========
+  auto input_component = Input(&input, "type command...");
+
+  // when Enter pressed → append to console
+  input_component |= CatchEvent([&](Event e) {
+    if (e == Event::Return) {
+      log.push_back("> " + input);
+      input.clear();
+      return true;
+    }
+    return false;
+  });
+
+  // ========== LEFT PANEL (console + input) ==========
+  auto left_panel = Container::Vertical({
+    console_component,
+    input_component,
+  });
+
+  auto left_renderer = Renderer(left_panel, [&] {
+    return vbox({
+      console_component->Render() | flex,
+      separator(),
+      input_component->Render(),
+    });
+  });
+
+  // ========== RIGHT PANEL ==========
+  auto right_panel = Container::Vertical({
+    clients_component
+  });
+
+  auto right_renderer = Renderer(right_panel, [&] {
+    return clients_component->Render() | flex | size(WIDTH, EQUAL, 30);
+  });
+
+  // ========== MAIN LAYOUT ==========
+  auto main_container = Container::Horizontal({
+    left_panel,
+    right_panel
+  });
+
+  auto screen_renderer = Renderer(main_container, [&] {
+    return hbox({
+      left_renderer->Render() | flex_grow,   // 2/3-ish
+      separator(),
+      right_renderer->Render() | size(WIDTH, GREATER_THAN, 25),
+    });
+  });
+
+  screen.Loop(screen_renderer);
+}
+
+// #include <ftxui/ftxui.hpp>
+// using namespace ftxui;
+//
+// int main() {
+//     auto document =
+//       vbox({
+//         hbox({
+//           text("one") | border,
+//           text("two") | border | flex,
+//           text("three") | border | flex,
+//         }),
+//
+//         gauge(0.25) | color(Color::Red),
+//         gauge(0.50) | color(Color::White),
+//         gauge(0.75) | color(Color::Blue),
+//       });
+//
+//     auto screen = Screen::Create(Dimension::Full());
+//     Render(screen, document);
+//     screen.Print();
+//
+//     return 0;
+// }
 
 /*
 int main() {
@@ -264,3 +397,5 @@ int main() {
     return 0;
 }
 */
+
+#endif

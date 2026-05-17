@@ -4,21 +4,41 @@
 
 #pragma once
 #include <functional>
-#include <list>
+#include <vector>
 #include <string>
-#include <unordered_map>
-#include <optional>
+
 #include <memory>
 
 struct Command {
     using Callback = std::function<bool(const std::vector<std::string>&)>;
 
+    enum class Usable : uint8_t{
+        SELECTED = 1U,
+        UNSELECTED = 2U,
+        ANYTIME = 4U
+    };
 
     std::string name;
     std::string desc;
     std::string usage;
-    // Usable usable;
+    Usable usable;
     Callback func;
+
+    bool isUsable(Usable compare) {
+        return static_cast<uint8_t>(compare) & static_cast<uint8_t>(usable);
+    }
+
+    bool isAnytime() {
+        return usable == Usable::ANYTIME;
+    }
+
+    bool isSelected() {
+        return usable == Usable::SELECTED;
+    }
+
+    bool isUnselected() {
+        return usable == Usable::UNSELECTED;
+    }
 
     Command() = default;
     Command(std::string name, std::string desc, std::string usage, Callback func)
@@ -30,50 +50,4 @@ struct Command {
     Command& operator=(const Command&) = default;
 };
 
-struct CommandList
-{
-    enum class Usable {
-        SELECTED,
-        UNSELECTED,
-        ANYTIME
-   };
 
-    std::unordered_map<Usable, std::unordered_map<std::string, Command>> commandsMap;
-
-    void registerCommand(Command&& command, Usable when) {
-        commandsMap[when][command.name] = std::move(command);
-    }
-
-    std::optional<std::function<bool(const std::vector<std::string>&)>> anytime(const std::string& cmd) {
-        if (commandsMap[Usable::ANYTIME].contains(cmd))
-        {
-            return commandsMap[Usable::ANYTIME][cmd].func;
-        }
-        return {};
-    }
-
-    std::optional<std::function<bool(const std::vector<std::string>&)>> selected(const std::string& cmd) {
-        if (commandsMap[Usable::SELECTED].contains(cmd))
-        {
-            return commandsMap[Usable::SELECTED][cmd].func;
-        }
-        return {};
-    }
-
-    std::optional<std::function<bool(const std::vector<std::string>&)>> unselected(const std::string& cmd) {
-        if (commandsMap[Usable::UNSELECTED].contains(cmd))
-        {
-            return commandsMap[Usable::UNSELECTED][cmd].func;
-        }
-        return {};
-    }
-
-    std::optional<std::reference_wrapper<Command>> get(const std::string& cmd) {
-        for (auto& [_, value] : commandsMap) {
-            if (value.contains(cmd)) {
-                return value.at(cmd);
-            }
-        }
-        return {};
-    }
-};

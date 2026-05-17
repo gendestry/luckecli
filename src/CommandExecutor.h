@@ -7,45 +7,15 @@
 #include "Heartbeat.h"
 #include <unordered_map>
 #include <functional>
-#include <list>
 
 #include "Utils/Logging/Logger.h"
-#include "Command.h"
-
-struct CmdInfo {
-     enum class Usable {
-          SELECTED,
-          UNSELECTED,
-          ANYTIME
-     } usable;
-     std::string name;
-     std::string desc;
-     std::string usage;
-     using cmdFunc = std::function<bool(const std::vector<std::string>&)>;
-     cmdFunc func;
-
-     // CmdInfo();
-     // CmdInfo(std::string name, std::string desc, std::string usage, cmdFunc func)
-     //      : name(std::move(name)), desc(std::move(desc)), usage(std::move(usage)), func(std::move(func)) {}
-};
-
-// struct CmdCache {
-//      std::list<CmdInfo> cmds;
-//      std::unordered_map<std::string, CmdInfo> commands;
-//      std::unordered_map<std::string, CmdInfo> commandsSelected;
-//
-//      // CmdInfo findCommand(const std::string& name) { }
-//
-// };
+#include "CommandList.h"
 
 
 class CommandExecutor {
 
      std::unique_ptr<ESPClient> client;
-     std::unordered_map<std::string, CmdInfo> commands;
-     std::unordered_map<std::string, CmdInfo> commandsSelected;
      Heartbeat heartbeat;
-
      CommandList cmdlist;
 
      bool selected = false;
@@ -55,6 +25,7 @@ class CommandExecutor {
 
      void bindcommands();
 public:
+     static Utils::Text::Stream stream;
      CommandExecutor();
 //
 //     void setClient(std::shared_ptr<ESPClient> newclient) {
