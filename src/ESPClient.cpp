@@ -16,8 +16,8 @@ std::atomic<bool> ESPClient::running = true;
 bool ESPClient::inited = false;
 SafeQueue<std::string> ESPClient::queue;
 
-ESPClient::ESPClient(std::string ip)
-    : ip_(std::move(ip)), logger("CONFIG")
+ESPClient::ESPClient(std::string ip, SharedState& state)
+    : ip_(std::move(ip)), logger("CONFIG"), m_sharedState(state)
 {
     if (!inited) {
         inited = true;
@@ -104,9 +104,11 @@ void ESPClient::run(const std::string& request, bool jsonres, std::chrono::milli
         if (jsonres) {
             json responseJson = json::parse(response);
             logger.println("{}", responseJson.dump(2));
+            m_sharedState.addResponse(responseJson.dump(2));
         }
         else {
             logger.println("{}", response.empty() ? "Done" : response);
+            m_sharedState.addResponse(response.empty() ? "Done" : response);
         }
         logger.toggleScope();
     }

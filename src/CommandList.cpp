@@ -8,7 +8,17 @@ void CommandList::registerCommand(Command&& command, Command::Usable when) {
     const auto ptr = std::make_shared<Command>(std::move(command));
     ptr->usable = when;
     commands.push_back(ptr);
-    commandsMap[when][ptr->name] = ptr;
+    for (auto& alias : ptr->aliases) {
+        commandsMap[when][alias] = ptr;
+    }
+
+    currentGroup.commands.push_back(ptr);
+}
+
+void CommandList::registerCommandNoname(Command&& command, Command::Usable when) {
+    const auto ptr = std::make_shared<Command>(std::move(command));
+    ptr->usable = when;
+    commandsNameless[when].push_back(ptr);
     currentGroup.commands.push_back(ptr);
 }
 
@@ -27,26 +37,32 @@ void CommandList::pushGroup() {
     groups.push_back(std::move(currentGroup));
 }
 
-std::optional<std::function<bool(const std::vector<std::string>&)>> CommandList::anytime(const std::string& cmd) {
-    if (commandsMap[Command::Usable::ANYTIME].contains(cmd))
-    {
-        return commandsMap[Command::Usable::ANYTIME][cmd]->func;
-    }
-    return {};
+std::optional<std::function<bool(const std::vector<std::string>&)>> CommandList::anytime(const std::vector<std::string>& args) {
+    return getfunc(args, Command::Usable::ANYTIME);
 }
 
-std::optional<std::function<bool(const std::vector<std::string>&)>> CommandList::selected(const std::string& cmd) {
-    if (commandsMap[Command::Usable::SELECTED].contains(cmd))
-    {
-        return commandsMap[Command::Usable::SELECTED][cmd]->func;
-    }
-    return {};
+std::optional<std::function<bool(const std::vector<std::string>&)>> CommandList::selected(const std::vector<std::string>& args) {
+    return getfunc(args, Command::Usable::SELECTED);
 }
 
-std::optional<std::function<bool(const std::vector<std::string>&)>> CommandList::unselected(const std::string& cmd) {
-    if (commandsMap[Command::Usable::UNSELECTED].contains(cmd))
-    {
-        return commandsMap[Command::Usable::UNSELECTED][cmd]->func;
+std::optional<std::function<bool(const std::vector<std::string>&)>> CommandList::unselected(const std::vector<std::string>& args) {
+    return getfunc(args, Command::Usable::UNSELECTED);
+}
+
+std::optional<std::function<bool(const std::vector<std::string>&)>> CommandList::getfunc(const std::vector<std::string>& args, Command::Usable when) {
+    if (!args.empty()) {
+        const auto& cmd = args[0];
+        if (commandsMap[when].contains(cmd))
+        {
+            return commandsMap[when][cmd]->func;
+        }
+    }
+
+    auto& cmds = commandsNameless[when];
+    for (auto& it : cmds) {
+        if (it->condition(args)) {
+            return it->func;
+        }
     }
     return {};
 }

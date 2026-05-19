@@ -10,23 +10,26 @@
 
 #include "Utils/Logging/Logger.h"
 #include "CommandList.h"
+#include "SharedState.h"
 
 
 class CommandExecutor {
 
      std::unique_ptr<ESPClient> client;
-     Heartbeat heartbeat;
+     // Heartbeat heartbeat;
      CommandList cmdlist;
 
      bool selected = false;
      bool exitRequest = false;
+
+     SharedState& m_sharedState;
 
      Utils::Logger logger;
 
      void bindcommands();
 public:
      static Utils::Text::Stream stream;
-     CommandExecutor();
+     CommandExecutor(SharedState& state);
 //
 //     void setClient(std::shared_ptr<ESPClient> newclient) {
 //         this->client = newclient;
@@ -43,6 +46,7 @@ public:
      bool all_config(const std::vector<std::string>& = {});
      bool list(const std::vector<std::string>& = {});
      bool select(const std::vector<std::string>& = {});
+     bool selectName(const std::vector<std::string>& = {});
      bool selectIP(const std::vector<std::string>& = {});
 
      bool deselect(const std::vector<std::string>& = {});

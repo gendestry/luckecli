@@ -5,6 +5,7 @@
 #include <optional>
 #include "Utils/Text/Stream.h"
 #include "SafeQueue.h"
+#include "SharedState.h"
 #include "Utils/Logging/Logger.h"
 
 using namespace std::chrono_literals;
@@ -19,9 +20,12 @@ class ESPClient {
     static void listen_ingest_udp();
     static void listen_ingest_tcp();
 
+    SharedState& m_sharedState;
+
     std::optional<std::string> sendRequestOpt(const std::string& request, std::chrono::milliseconds timeout) const;
 public:
-    ESPClient(std::string ip);
+    ;
+    ESPClient(std::string ip, SharedState& state);
     ~ESPClient();
 
     static void stop();

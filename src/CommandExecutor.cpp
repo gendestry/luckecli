@@ -8,12 +8,11 @@
 #include <iostream>
 #include <ranges>
 #include <nlohmann/json.hpp>
-#include "HELP.h"
 
 Utils::Text::Stream CommandExecutor::stream;
 
-CommandExecutor::CommandExecutor()
-    : logger("Command") {
+CommandExecutor::CommandExecutor(SharedState& state)
+    : logger("Command"), m_sharedState(state) {
     logger.toggleScope();
 
     bindcommands();
@@ -25,21 +24,17 @@ bool CommandExecutor::resolveCommand(const std::string& line) {
 
     bool result = false;
 
-    auto anytime = cmdlist.anytime(cmd);
+    auto anytime = cmdlist.anytime(args);
     if (anytime) {
         result = anytime.value()(args);
     }
     else {
         if (!selected)
         {
-            auto fun = cmdlist.unselected(cmd);
             if (cmd.empty()) {
                 result = list(args);
             }
-            else if (Utils::String::isInt(cmd)) {
-                result = select(args);
-            }
-            else if (fun) {
+            else if (auto fun = cmdlist.unselected(args)) {
                 result = fun.value()(args);
             }
             else {
@@ -47,11 +42,10 @@ bool CommandExecutor::resolveCommand(const std::string& line) {
             }
         }
         else {
-            auto fun = cmdlist.selected(cmd);
             if (cmd.empty()) {
                 result = get_fixture_config();
             }
-            else if (fun) {
+            else if (auto fun = cmdlist.selected(args)) {
                 result = fun.value()(args);
             }
             else {
@@ -61,7 +55,9 @@ bool CommandExecutor::resolveCommand(const std::string& line) {
     }
 
     if (selected) {
-        logger.print("{}{}@{}>{} ", Utils::Font::colorYellow, heartbeat[client->getIP()].descriptions[0].name, client->getIP(), Utils::Font::colorReset);
+        auto sclient = m_sharedState.getClientByIp(client->getIP());
+        auto cname = sclient->descriptions[0].name;
+        logger.print("{}{}@{}>{} ", Utils::Font::colorYellow, cname, sclient->ip, Utils::Font::colorReset);
     }
     else {
         logger.print("> ");
@@ -88,9 +84,25 @@ void CommandExecutor::bindcommands() {
         return this->list();
     }), Command::Usable::UNSELECTED);
 
-    cmdlist.registerCommand(Command("select", "Select an item", "select <number> or <number>",
+    cmdlist.registerCommand(Command("select", "Select an item", "select <number>",
     [this](const std::vector<std::string>& args) {
         return select(args);
+    }), Command::Usable::UNSELECTED);
+
+    cmdlist.registerCommandNoname(Command("<id>", "Select fixture by id", "<id>",
+    [](const std::vector<std::string>& args) {
+        return Utils::String::isInt(args[0]);
+    },
+    [this](const std::vector<std::string>& args) {
+        return select(args);
+    }), Command::Usable::UNSELECTED);
+
+    cmdlist.registerCommandNoname(Command("<name>", "Select fixture by name", "<name>",
+    [this](const std::vector<std::string>& args) {
+        return !(args.empty() || !m_sharedState.getClientByName(args[0]));
+    },
+    [this](const std::vector<std::string>& args) {
+        return selectName(args);
     }), Command::Usable::UNSELECTED);
 
     cmdlist.registerCommand(Command("config", "Prints all config", "config",
@@ -98,7 +110,7 @@ void CommandExecutor::bindcommands() {
         return all_config();
     }), Command::Usable::UNSELECTED);
 
-    cmdlist.registerCommand(Command("back", "Return to previous menu", "back",
+    cmdlist.registerCommand(Command(std::vector<std::string>{"back", "b"}, "Return to previous menu", "back",
     [this](const std::vector<std::string>& args) {
         return deselect();
     }), Command::Usable::SELECTED);
@@ -229,7 +241,7 @@ bool CommandExecutor::help(const std::vector<std::string>& args) {
         return false;
     }
 
-    for (auto& group : cmdlist.groups) {
+    for (auto& group : cmdlist.getGroups()) {
         bool found = false;
         for (auto& cmds : group.commands) {
 
@@ -249,47 +261,6 @@ bool CommandExecutor::help(const std::vector<std::string>& args) {
             }
         }
     }
-
-    // logger.println("Help:");
-    // auto& anytime    = cmdlist.commandsMap[Command::Usable::ANYTIME];
-    // auto& specific   = cmdlist.commandsMap[selected
-    //                         ? Command::Usable::SELECTED
-                            // : Command::Usable::UNSELECTED];
-//     auto combined = std::views::concat(
-//     anytime | std::views::values,
-//     specific | std::views::values
-// );
-
-    // for (auto& value : anytime | std::views::values)
-    // {
-    //     logger.println(
-    //         " - {}: {}{}{}{}",
-    //         value.name,
-    //         Utils::Font::colorByRGB(100, 100, 100),
-    //         Utils::Font::colorItalic,
-    //         value.desc,
-    //         Utils::Font::colorReset
-    //     );
-    // }
-    //
-    // for (auto& value : specific | std::views::values)
-    // {
-    //     logger.println(
-    //         " - {}: {}{}{}{}",
-    //         value.name,
-    //         Utils::Font::colorByRGB(100, 100, 100),
-    //         Utils::Font::colorItalic,
-    //         value.desc,
-    //         Utils::Font::colorReset
-    //     );
-    // }
-    // const auto& submap = cmdlist.commandsMap[selected ? CommandList::Usable::SELECTED : CommandList::Usable::UNSELECTED];
-    // for (auto& [_, value] : submap) {
-    //     logger.println(" - {}: {}{}{}{}", value.name, Utils::Font::colorByRGB(100, 100, 100), Utils::Font::colorItalic, value.desc, Utils::Font::colorReset);
-    // }
-    // for (auto& [_, cmdinfo] : selected ? commandsSelected : commands) {
-    //     logger.println(" - {}: {}{}{}{}", cmdinfo.name, Utils::Font::colorByRGB(100, 100, 100), Utils::Font::colorItalic, cmdinfo.desc, Utils::Font::colorReset);
-    // }
     return true;
 }
 
@@ -302,20 +273,21 @@ bool CommandExecutor::reboot(const std::vector<std::string>&) {
 
 bool CommandExecutor::list(const std::vector<std::string>&) {
     logger.println("Fixtures online:");
-    for (auto clientinfo : heartbeat.getClients()) {
+    int j = 0;
+    for (auto clientinfo : m_sharedState.getClients()) {
         Utils::Text::Stream stream;
         stream << clientinfo->descriptions[0].name;
         for (int i = 1; i < clientinfo->descriptions.size(); i++) {
             stream << ", " << clientinfo->descriptions[i].name;
         }
-        logger.print(" - {}: {} {}({}){}", clientinfo->index, stream.end(), Utils::Font::colorItalic, clientinfo->ip, Utils::Font::colorReset);
+        logger.print(" - {}: {} {}({}){}", j++, stream.end(), Utils::Font::colorItalic, clientinfo->ip, Utils::Font::colorReset);
         logger.println("{}{} v{}{}", Utils::Font::colorGreen, Utils::Font::colorItalic, clientinfo->version, Utils::Font::colorReset);
     }
     return true;
 }
 
 bool CommandExecutor::all_config(const std::vector<std::string>&) {
-    const auto& allclients = heartbeat.getClients();
+    const auto& allclients = m_sharedState.getClients();
     for (int i = 0; i < allclients.size(); i++) {
         auto& client = allclients[i];
         select({std::to_string(i)});
@@ -338,19 +310,27 @@ bool CommandExecutor::select(const std::vector<std::string>& args) {
     else {
         return false;
     }
-    const auto size = heartbeat.size();
+    const auto size = m_sharedState.getClients().size();
     if (i >= size) {
         logger.error("Index out of bounds, size: {}, index: {}", size, args[0]);
     }
     else {
         // selectIndex(i);
-        const auto ip = heartbeat.getClients()[i]->ip;
+        const auto ip = m_sharedState.getClients()[i]->ip;
         logger.debug("Selected: {} with ip {}", i, ip);
         selected = true;
-        client = std::make_unique<ESPClient>(ip);
+        client = std::make_unique<ESPClient>(ip, m_sharedState);
     }
     return true;
         // logger.error("Required inputs: 2, given: {}", args.size());
+}
+
+bool CommandExecutor::selectName(const std::vector<std::string>& args) {
+    auto c = m_sharedState.getClientByName(args[0]);
+    selected = true;
+    client = std::make_unique<ESPClient>(c->ip, m_sharedState);
+
+    return true;
 }
 
 bool CommandExecutor::selectIP(const std::vector<std::string>& args) {
@@ -475,13 +455,26 @@ bool CommandExecutor::get_fixture_info(const std::vector<std::string>& args) {
 }
 
 struct FixtureConfig {
-    int id{};
-    std::string name;
-    std::string type;
-    int universe{};
-    int address{};
-    int presetIndex{};
-    int numPresets{};
+    int id = -1;
+    std::string name = "";
+    std::string type = "";
+    int universe = -1;
+    int address = -1;
+    int presetIndex = -1;
+    int numPresets = -1;
+
+    FixtureConfig() = default;
+    FixtureConfig(const nlohmann::json& v) {
+        // auto& v = json["value"];
+
+        id = v.value("id", -1);
+        name = v.value("name", "");
+        type = v.value("type", "");
+        universe = v.value("universe", 0);
+        address = v.value("address", 0);
+        presetIndex = v.value("presetIndex", -1);
+        numPresets = v.value("numPresets", -1);
+    }
 };
 
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(
@@ -496,7 +489,8 @@ bool CommandExecutor::get_fixture_config(const std::vector<std::string>& args) {
     json data = json::parse(ret);
 
     json respjson = json::parse(data["response"].get<std::string>());
-    auto cfg = respjson["value"].get<FixtureConfig>();
+    auto v = respjson["value"];
+    FixtureConfig cfg(v);
 
     logger.println("Fixture '{}' info:", cfg.name);
     logger.println(" - universe: {}", cfg.universe);

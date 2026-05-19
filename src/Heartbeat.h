@@ -130,56 +130,26 @@
 // #endif //UTILS_HEARTBEAT_H
 #pragma once
 #include <memory>
-#include <string>
 #include <thread>
-#include <vector>
-#include <mutex>
-#include <unordered_map>
 
+#include "SharedState.h"
 #include "Utils/Logging/Logger.h"
 
 
-
-struct ClientInfo {
-    struct Description {
-        std::string name;
-        std::string type;
-    };
-    uint32_t index;
-    std::string version = "outdated";
-    std::string ip;
-    std::vector<Description>descriptions;
-    // std::string data;
-};
-
 class Heartbeat {
-    std::unordered_map<std::string, ClientInfo> clients;
-    std::vector<std::shared_ptr<ClientInfo>> clients_list;
-
     std::atomic<bool> running_ingest{false};
-    std::mutex clients_mutex;
     bool inited = false;
     std::thread ingest_thread;
 
     Utils::Logger logger;
+    SharedState& m_sharedState;
 
     void start();
     void packet_ingest();
 
 public:
-    Heartbeat();
+    Heartbeat(SharedState& state);
     ~Heartbeat();
 
     void stop();
-
-    std::vector<std::shared_ptr<ClientInfo>> getClients();
-    uint32_t size();
-
-    const ClientInfo& operator[] (const std::string& ip) {
-        if (clients.contains(ip)) {
-            return clients[ip];
-        }
-        throw std::logic_error("Unknown client ip");
-
-    }
 };

@@ -3,9 +3,6 @@
 //
 
 #include "Heartbeat.h"
-// std::atomic<bool> Heartbeat::running_ingest = false;
-// bool Heartbeat::inited = false;
-// std::thread Heartbeat::ingest_thread;
 
 #include <cstring>
 #include <sys/types.h>
@@ -17,7 +14,7 @@
 #include <nlohmann/json.hpp>
 
 
-Heartbeat::Heartbeat() : logger("Heartbeat") {
+Heartbeat::Heartbeat(SharedState& state) : logger("Heartbeat"), m_sharedState(state){
     start();
 }
 
@@ -84,53 +81,27 @@ void Heartbeat::packet_ingest() {
         std::string ip = inet_ntoa(sender.sin_addr);
         std::string data(buffer, bytes_received);
 
-        {
-            std::lock_guard lock(clients_mutex);
-            using json = nlohmann::json;
-            json jarr = json::parse(data);
+        using json = nlohmann::json;
+        json jarr = json::parse(data);
 
-            if (!clients.contains(ip)) {
-                ClientInfo info;
-                info.index = currentIndex++;
-                info.ip = ip;
-                if (jarr.contains("version")) {
-                    info.version = jarr["version"];
-                }
-
-                for (const auto& item : jarr["fixtures"]) {
-                    ClientInfo::Description f;
-                    f.name = item["name"];
-                    f.type = item["type"];
-
-                    info.descriptions.push_back(std::move(f));
-                }
-                clients[ip] = std::move(info);
-                clients_list.push_back(std::make_shared<ClientInfo>(clients[ip]));
-            } else {
-                std::vector<ClientInfo::Description> descs;
-                for (const auto& item : jarr["fixtures"]) {
-                    ClientInfo::Description f;
-                    f.name = item["name"];
-                    f.type = item["type"];
-
-                    descs.push_back(std::move(f));
-                }
-                clients[ip].descriptions = std::move(descs);
-            }
+        ClientInfo info;
+        info.ip = ip;
+        if (jarr.contains("version")) {
+            info.version = jarr["version"];
         }
+
+        for (const auto& item : jarr["fixtures"]) {
+            ClientInfo::Description f;
+            f.name = item["name"];
+            f.type = item["type"];
+
+            info.descriptions.push_back(std::move(f));
+        }
+
+        m_sharedState.addClient(std::move(info), ip);
 
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
     close(sock);
-}
-
-std::vector<std::shared_ptr<ClientInfo>> Heartbeat::getClients() {
-    std::lock_guard lock(clients_mutex);
-    return clients_list;
-}
-
-uint32_t Heartbeat::size() {
-    std::lock_guard lock(clients_mutex);
-    return clients_list.size();
 }
