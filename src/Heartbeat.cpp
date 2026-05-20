@@ -23,25 +23,24 @@ Heartbeat::~Heartbeat() {
 }
 
 void Heartbeat::start() {
-    if (inited) return;
+    if (inited) {
+        return;
+    }
 
     running_ingest = true;
-
     ingest_thread = std::thread(&Heartbeat::packet_ingest, this);
-
     inited = true;
 }
 
 void Heartbeat::stop() {
     running_ingest = false;
 
-    if (ingest_thread.joinable())
+    if (ingest_thread.joinable()) {
         ingest_thread.join();
+    }
 }
 
 void Heartbeat::packet_ingest() {
-    uint32_t currentIndex = 0;
-
     int sock = socket(AF_INET, SOCK_DGRAM, 0);
     if (sock < 0) {
         logger.error("Socket creation failed: {}", strerror(errno));
@@ -78,7 +77,7 @@ void Heartbeat::packet_ingest() {
             continue;
         }
 
-        std::string ip = inet_ntoa(sender.sin_addr);
+        const std::string ip = inet_ntoa(sender.sin_addr);
         std::string data(buffer, bytes_received);
 
         using json = nlohmann::json;
@@ -99,7 +98,6 @@ void Heartbeat::packet_ingest() {
         }
 
         m_sharedState.addClient(std::move(info), ip);
-
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 

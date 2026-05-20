@@ -8,7 +8,6 @@
 #include <optional>
 
 #include "Command.h"
-#include "Command.h"
 
 struct Group {
     std::string name;

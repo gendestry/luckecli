@@ -3,9 +3,16 @@
 //
 #include "SharedState.h"
 
+#include <iostream>
+
 SharedState::SharedState(std::function<void()> onChange)
-        : onChangeCallback(onChange)
-{}
+    : onChangeCallback(onChange), log("Shared state",
+    [](const Loggable& l) {
+        std::cout << l.typeToString()<< l.toString();
+        return true;
+    }) {
+    // log.setLocalLevel(Loggable::DEBUG);
+}
 
 void SharedState::triggerChange() {
     std::lock_guard lock(callbackMutex);
@@ -21,6 +28,7 @@ void SharedState::addClient(ClientInfo client, std::string ip) {
     else {
         clients[ip] = std::make_shared<ClientInfo>(std::move(client));
         clients_list.push_back(clients[ip]);
+        log.debug("Added new client at ip: {}", ip);
     }
 
     triggerChange();

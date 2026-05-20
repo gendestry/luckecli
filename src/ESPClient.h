@@ -3,15 +3,15 @@
 #include <atomic>
 #include <thread>
 #include <optional>
-#include "Utils/Text/Stream.h"
+
+#include "Diary/Log.h"
 #include "SafeQueue.h"
 #include "SharedState.h"
-#include "Utils/Logging/Logger.h"
 
 using namespace std::chrono_literals;
 
 class ESPClient {
-    Utils::Logger logger;
+    Log logger;
     static std::thread listen_thread;
     static std::atomic<bool> running;
     static SafeQueue<std::string> queue;
@@ -22,7 +22,7 @@ class ESPClient {
 
     SharedState& m_sharedState;
 
-    std::optional<std::string> sendRequestOpt(const std::string& request, std::chrono::milliseconds timeout) const;
+    std::optional<std::string> sendRequestOpt(const std::string& request, std::chrono::milliseconds timeout);
 public:
     ;
     ESPClient(std::string ip, SharedState& state);
@@ -30,7 +30,7 @@ public:
 
     static void stop();
 
-    void sendRequest(const std::string& request) const;
+    void sendRequest(const std::string& request);
     void run(const std::string& request, bool jsonres = false, std::chrono::milliseconds timeout = 2000ms);
     std::string runStr(const std::string& request, bool jsonres = false, std::chrono::milliseconds timeout = 2000ms);
 

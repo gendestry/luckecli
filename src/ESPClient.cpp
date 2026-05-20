@@ -43,7 +43,7 @@ void ESPClient::stop() {
     }
 }
 
-void ESPClient::sendRequest(const std::string& request) const {
+void ESPClient::sendRequest(const std::string& request) {
     int sock = socket(AF_INET, SOCK_STREAM, 0);
     if (sock < 0) {
         logger.error("Socket creation failed: {}", strerror(errno));
@@ -65,7 +65,7 @@ void ESPClient::sendRequest(const std::string& request) const {
     close(sock);
 }
 
-std::optional<std::string> ESPClient::sendRequestOpt(const std::string& request, std::chrono::milliseconds timeout) const {
+std::optional<std::string> ESPClient::sendRequestOpt(const std::string& request, std::chrono::milliseconds timeout) {
     int sock = socket(AF_INET, SOCK_STREAM, 0);
     if (sock < 0) {
         logger.error("Socket creation failed: {}", strerror(errno));
@@ -100,7 +100,7 @@ void ESPClient::run(const std::string& request, bool jsonres, std::chrono::milli
     std::string response = data["response"];
     std::string status = data["status"];
     if (status == "OK") {
-        logger.toggleScope();
+        // logger.toggleScope();
         if (jsonres) {
             json responseJson = json::parse(response);
             logger.println("{}", responseJson.dump(2));
@@ -110,7 +110,7 @@ void ESPClient::run(const std::string& request, bool jsonres, std::chrono::milli
             logger.println("{}", response.empty() ? "Done" : response);
             m_sharedState.addResponse(response.empty() ? "Done" : response);
         }
-        logger.toggleScope();
+        // logger.toggleScope();
     }
     else {
         logger.error("{}", response);

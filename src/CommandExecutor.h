@@ -4,41 +4,28 @@
 #pragma once
 #include <memory>
 #include "ESPClient.h"
-#include "Heartbeat.h"
-#include <unordered_map>
-#include <functional>
 
-#include "Utils/Logging/Logger.h"
+#include "Diary/Log.h"
 #include "CommandList.h"
 #include "SharedState.h"
 
-
 class CommandExecutor {
+     CommandList m_cmdList;
+     SharedState& m_sharedState;
+     Log log;
 
-     std::unique_ptr<ESPClient> client;
-     // Heartbeat heartbeat;
-     CommandList cmdlist;
-
+     std::unique_ptr<ESPClient> m_client;
      bool selected = false;
      bool exitRequest = false;
 
-     SharedState& m_sharedState;
-
-     Utils::Logger logger;
-
-     void bindcommands();
+     void bindCommands();
 public:
-     static Utils::Text::Stream stream;
      CommandExecutor(SharedState& state);
-//
-//     void setClient(std::shared_ptr<ESPClient> newclient) {
-//         this->client = newclient;
-//     }
-//
-     bool isSelected() { return selected; }
-     bool shouldQuit() { return exitRequest;}
+
+     bool isSelected() const { return selected; }
+     bool shouldQuit() const { return exitRequest;}
      bool resolveCommand(const std::string& line);
-//
+
      bool exit(const std::vector<std::string>& = {});
      bool help(const std::vector<std::string>& = {});
      bool reboot(const std::vector<std::string>& = {});

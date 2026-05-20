@@ -2,33 +2,29 @@
 // Created by bobi on 17. 05. 26.
 //
 
-#ifndef LUCKECLI_SHAREDSTATE_H
-#define LUCKECLI_SHAREDSTATE_H
+#pragma once
 #include <functional>
+#include <list>
 #include <string>
 #include <mutex>
 #include <vector>
 #include <memory>
 #include <unordered_map>
 
+#include "Diary/Log.h"
+
 struct ClientInfo {
     struct Description {
         std::string name;
         std::string type;
     };
-    // uint32_t index;
     std::string version = "outdated";
     std::string ip;
     std::vector<Description>descriptions;
-
-    ClientInfo() {
-        // static uint32_t sindex = 0;
-        // index = sindex++;
-    }
-    // std::string data;
 };
 
 class SharedState {
+    Log log;
     std::unordered_map<std::string, std::shared_ptr<ClientInfo>> clients;
     std::vector<std::shared_ptr<ClientInfo>> clients_list;
     std::mutex mutex;
@@ -53,5 +49,3 @@ public:
 
     std::vector<std::shared_ptr<ClientInfo>> getClients();
 };
-
-#endif //LUCKECLI_SHAREDSTATE_H
