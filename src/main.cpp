@@ -8,19 +8,10 @@
 
 
 int main() {
-    Log logger("Main");
     SharedState state;
     Heartbeat heartbeat(state);
     CommandExecutor exec(state);
-
-    logger.print("> ");
-    std::string line;
-    while (std::getline(std::cin, line)) {
-        auto resolved = exec.resolveCommand(line);
-        if (exec.shouldQuit()) {
-            break;
-        }
-    }
+    exec.run();
 
     return 0;
 }

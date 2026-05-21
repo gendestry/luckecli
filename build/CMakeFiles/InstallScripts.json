@@ -1,0 +1,13 @@
+{
+	"InstallScripts" : 
+	[
+		"/home/bobi/Coding/luckecli/build/cmake_install.cmake",
+		"/home/bobi/Coding/luckecli/build/lib/json/cmake_install.cmake",
+		"/home/bobi/Coding/luckecli/build/lib/Utils/cmake_install.cmake",
+		"/home/bobi/Coding/luckecli/build/lib/Utils/examples/cmake_install.cmake",
+		"/home/bobi/Coding/luckecli/build/lib/FTXUI/cmake_install.cmake",
+		"/home/bobi/Coding/luckecli/build/lib/FTXUI/examples/cmake_install.cmake",
+		"/home/bobi/Coding/luckecli/build/lib/FTXUI/doc/cmake_install.cmake"
+	],
+	"Parallel" : false
+}

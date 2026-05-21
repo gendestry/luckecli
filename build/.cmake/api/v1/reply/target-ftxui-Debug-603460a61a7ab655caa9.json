@@ -1,0 +1,62 @@
+{
+	"abstract" : true,
+	"backtrace" : 1,
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"add_library",
+			"target_link_libraries"
+		],
+		"files" : 
+		[
+			"lib/FTXUI/CMakeLists.txt"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 0
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 156,
+				"parent" : 0
+			},
+			{
+				"command" : 1,
+				"file" : 0,
+				"line" : 157,
+				"parent" : 0
+			}
+		]
+	},
+	"codemodelVersion" : 
+	{
+		"major" : 2,
+		"minor" : 10
+	},
+	"id" : "ftxui::@47af7edb050c746b238c",
+	"interfaceCompileDependencies" : 
+	[
+		{
+			"backtrace" : 2,
+			"id" : "component::@47af7edb050c746b238c"
+		}
+	],
+	"interfaceLinkLibraries" : 
+	[
+		{
+			"backtrace" : 2,
+			"id" : "component::@47af7edb050c746b238c"
+		}
+	],
+	"name" : "ftxui",
+	"paths" : 
+	{
+		"build" : "lib/FTXUI",
+		"source" : "lib/FTXUI"
+	},
+	"sources" : [],
+	"type" : "INTERFACE_LIBRARY"
+}

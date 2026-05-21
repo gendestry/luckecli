@@ -6,12 +6,24 @@
 #include "Utils/Text/String.h"
 #include "JSONtemp.h"
 #include <nlohmann/json.hpp>
+#include <iostream>
 
 CommandExecutor::CommandExecutor(SharedState& state)
     : log("Command"), m_sharedState(state) {
     // log.toggleScope();
 
     bindCommands();
+}
+
+void CommandExecutor::run() {
+    log.print("> ");
+    std::string line;
+    while (std::getline(std::cin, line)) {
+        auto resolved = resolveCommand(line);
+        if (shouldQuit()) {
+            break;
+        }
+    }
 }
 
 bool CommandExecutor::resolveCommand(const std::string& line) {
@@ -23,6 +35,10 @@ bool CommandExecutor::resolveCommand(const std::string& line) {
     auto anytime = m_cmdList.anytime(args);
     if (anytime) {
         result = anytime.value()(args);
+        if(shouldQuit())
+        {
+            return true;
+        }
     }
     else {
         if (!selected)
@@ -120,10 +136,6 @@ void CommandExecutor::bindCommands() {
         return task_config(args);
     };
 
-    auto get_info_cmd = [this](const std::vector<std::string>& args) {
-        return get_info(args);
-    };
-
     auto get_fixture_info_cmd = [this](const std::vector<std::string>& args) {
         return get_fixture_info(args);
     };
@@ -154,13 +166,19 @@ void CommandExecutor::bindCommands() {
 
     // ---------- grouped info commands ----------
     m_cmdList.registerCommand(Command("describe", "Show info", "describe",
-    get_info_cmd), Command::Usable::SELECTED);
+    [this](const std::vector<std::string>& args) {
+        return describe(args);
+    }), Command::Usable::SELECTED);
 
     m_cmdList.registerCommand(Command("fixtures", "Show fixtures info", "fixtures",
-    get_info_cmd), Command::Usable::SELECTED);
+    [this](const std::vector<std::string>& args) {
+        return fixtures(args);
+    }), Command::Usable::SELECTED);
 
     m_cmdList.registerCommand(Command("inputs", "Show inputs info", "inputs",
-    get_info_cmd), Command::Usable::SELECTED);
+    [this](const std::vector<std::string>& args) {
+        return inputs(args);
+    }), Command::Usable::SELECTED);
 
     m_cmdList.registerCommand(Command("presets", "Show presets info", "presets",
     [this](const std::vector<std::string>& args) {
@@ -195,6 +213,11 @@ void CommandExecutor::bindCommands() {
     m_cmdList.registerCommand(Command("config", "Get full fixture config", "config <number=0>?",
     [this](const std::vector<std::string>& args) {
         return get_fixture_config(args);
+    }), Command::Usable::SELECTED);
+
+    m_cmdList.registerCommand(Command("inbytes", "Get full dmx array", "inbytes <number=0>?",
+    [this](const std::vector<std::string>& args) {
+        return inbytes(args);
     }), Command::Usable::SELECTED);
 
 
@@ -437,18 +460,6 @@ bool CommandExecutor::presets(const std::vector<std::string>& args) {
     return true;
 }
 
-bool CommandExecutor::get_fixture_info(const std::vector<std::string>& args) {
-    std::string cmd = args[0];
-    std::vector<std::string> arr = {"name", "universe", "address", "highlight", "config"};
-    if (std::ranges::find(arr, cmd) != arr.end() || cmd == "preset") {
-        if (cmd == "preset") cmd = "presetIndex";
-        log.debug("{} exists in array", cmd);
-        uint32_t id = args.size() == 2 ? std::stoi(args[1]) : 0;
-        m_client->run(JSONtemp::stringify("getfixture", "id", id, "value", cmd), false);
-        return true;
-    }
-    return false;
-}
 
 struct FixtureConfig {
     int id = -1;
@@ -461,8 +472,6 @@ struct FixtureConfig {
 
     FixtureConfig() = default;
     FixtureConfig(const nlohmann::json& v) {
-        // auto& v = json["value"];
-
         id = v.value("id", -1);
         name = v.value("name", "");
         type = v.value("type", "");
@@ -476,6 +485,232 @@ struct FixtureConfig {
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(
     FixtureConfig, id, name, type, universe, address, presetIndex, numPresets
 )
+
+
+bool CommandExecutor::describe(const std::vector<std::string>& args)
+{
+    auto resp = m_client->runStr(JSONtemp::stringify(args[0]), true);
+    using nlohmann::json;
+    
+    json respj = json::parse(resp);
+    std::string responseJsonStr = respj["response"];
+
+    json engineJson = json::parse(responseJsonStr);
+
+    {
+        json settings = engineJson["engine"]["settings"];
+        json wifi = engineJson["engine"]["wifi"];
+        std::string version = settings.value("version", "unknown");
+        std::string ssid = settings.value("ssid", "unknown");
+        std::string password = settings.value("password", "unknown");
+
+        int rssi = wifi.value("rssi", 0);
+        std::string ip = wifi.value("local_ip", "HMMM");
+        bool connected = wifi.value("connected", false);
+
+        bool serial_report_task = settings.value("serial_report_task", true);
+        bool wireless_report_task = settings.value("wireless_report_task", true);
+        bool wifi_animation = settings.value("wifi_animation", true);
+
+        log.println("Engine settings:");
+        log.println(" - Version: {}", version);
+        log.println(" - Serial print enabled: {}", serial_report_task);
+        log.println(" - Wireless print enabled: {}", wireless_report_task);
+        log.println(" - Wifi animation enabled: {}", wifi_animation);
+
+        log.println("Wifi:");
+        log.println(" - SSID: '{}'", ssid);
+        log.println(" - Password: '{}'", password);
+        log.println(" - Connected: {}", connected);
+        log.println(" - IP: {}", ip);
+        log.println(" - RSSI: {}", rssi);
+    }
+
+    json fixtures = engineJson["engine"]["fixture_handler"];
+    json inputs = engineJson["engine"]["input_handler"];
+
+    log.println("Inputs:");
+    for (const auto& input : inputs["inputs"])
+    {
+        int id = input.value("id", 0);
+        log.println(" - ID: {}", id);
+
+        int universe = input.value("universe", 0);
+        std::string type = input.value("type", "unknown");
+
+        log.println("   - universe: {}", universe);
+        log.println("   - type: {}", type);
+    }
+
+    log.println("Fixtures (num = {}):", fixtures.value("num_fixtures", 1));
+    for (const auto& fixture : fixtures["fixtures"])
+    {
+        FixtureConfig cfg(fixture);
+        log.println(" - ID: {}", cfg.id);
+        log.println("   - name: '{}'", cfg.name);
+        log.println("   - type: '{}'", cfg.type);
+        log.println("   - universe: {}", cfg.universe);
+        log.println("   - address: {}", cfg.address);
+        log.println("   - selected preset: {}", cfg.presetIndex);
+        log.println("   - number of presets: {}", cfg.numPresets);
+    }
+
+    return true;
+}
+
+bool CommandExecutor::fixtures(const std::vector<std::string>& args)
+{
+    auto resp = m_client->runStr(JSONtemp::stringify(args[0]), true);
+    using nlohmann::json;
+    
+    json respj = json::parse(resp);
+    // "response" contains a JSON string
+    std::string responseJsonStr = respj["response"];
+
+    // Parse inner JSON
+    json engineJson = json::parse(responseJsonStr);
+
+    json fixtures = engineJson["fixture_handler"];
+
+    log.println("Fixtures (num = {}):", fixtures.value("num_fixtures", 1));
+    for (const auto& fixture : fixtures["fixtures"])
+    {
+        FixtureConfig cfg;
+        if(fixture.contains("config") && !fixture["config"].is_null())
+        {
+            cfg = FixtureConfig(fixture["config"]);
+        }
+        
+        log.println(" - ID: {}", cfg.id);
+        log.println(" - name: '{}'", cfg.name);
+        log.println(" - type: '{}'", cfg.type);
+        log.println(" - universe: {}", cfg.universe);
+        log.println(" - address: {}", cfg.address);
+        log.println(" - selected preset({}): '{}'", cfg.presetIndex, fixture.value("preset", "unknown"));
+        log.println(" - number of presets: {}", cfg.numPresets);
+        log.println(" - footprint: {}", fixture.value("footprint", -1));
+        if(fixture.contains("input_type"))
+        {
+            log.println(" - input type: {}", fixture.value("input_type", "unknown"));
+        }
+
+        if(!fixture.contains("outputs"))
+        {
+            return true;
+        }
+
+        log.println(" - outputs:");
+        int i = 0;
+        for (const auto& output : fixture["outputs"])
+        {
+            std::string outputType = output["type"];
+            int pin = output["hardware_pin"];
+
+            log.println("   - id: {}", i++);
+            log.println("     - type: {}", outputType);
+            log.println("     - hardware pin: {}", pin);
+        }
+    }
+
+    return true;
+}
+
+bool CommandExecutor::inputs(const std::vector<std::string>& args)
+{
+    auto resp = m_client->runStr(JSONtemp::stringify(args[0]), true);
+    using nlohmann::json;
+    
+    json respj = json::parse(resp);
+    std::string responseJsonStr = respj["response"];
+
+    json engineJson = json::parse(responseJsonStr);
+    json inputs = engineJson["input_handler"];
+
+    log.println("Inputs (num = {}):", inputs.value("num_inputs", 1));
+    for (const auto& input : inputs["inputs"])
+    {
+        log.println(" - ID: {}", input.value("id", -1));
+        log.println(" - type: '{}'", input.value("type", "Unknown"));
+        log.println(" - universe: {}", input.value("universe", -1));
+        log.print(" - bytes: ");
+
+        const auto& bytes = input["9_bytes"];
+
+        for (const auto& b : bytes)
+        {
+            int value = b;
+            log.print("{} ", value);
+        }
+
+        log.println("");
+    }
+
+    return true;
+}
+
+bool CommandExecutor::inbytes(const std::vector<std::string>& args)
+{
+    std::string cmd = args[0];
+    uint32_t id = args.size() == 2 ? std::stoi(args[1]) : 0;
+    auto resp = m_client->runStr(JSONtemp::stringify("getfixture", "id", id, "value", cmd), false);
+
+    using nlohmann::json;    
+    try
+    {
+        json respj = json::parse(resp);
+        std::string responseJsonStr = respj["response"];
+        json engineJson = json::parse(responseJsonStr);
+
+        std::vector<int> values = engineJson["value"].get<std::vector<int>>();
+
+        for (int i = 0; i < 16; i++)
+        {
+            static const std::string hex = "0123456789ABCDEF";
+            log.print("  0x{}", hex[i]);
+        }
+
+        log.println("");
+        for (int i = 0; i < 16 * 5; i++)
+        {
+            log.print("-");
+        }
+        log.println("");
+
+        int i = 0;
+        for(auto& b : values)
+        {
+            if(i != 0 && i % 16 == 0)
+            {
+                log.println("");
+            }
+
+            log.print("  {:3}", b);
+            i++;
+        }
+        log.println("");
+    }
+    catch (const json::parse_error& e)
+    {
+        log.println("Inbytes not supported");
+        return false;
+    }
+    
+    return true;
+}
+
+
+bool CommandExecutor::get_fixture_info(const std::vector<std::string>& args) {
+    std::string cmd = args[0];
+    std::vector<std::string> arr = {"name", "universe", "address", "highlight", "config"};
+    if (std::ranges::find(arr, cmd) != arr.end() || cmd == "preset") {
+        if (cmd == "preset") cmd = "presetIndex";
+        log.debug("{} exists in array", cmd);
+        uint32_t id = args.size() == 2 ? std::stoi(args[1]) : 0;
+        m_client->run(JSONtemp::stringify("getfixture", "id", id, "value", cmd), false);
+        return true;
+    }
+    return false;
+}
 
 bool CommandExecutor::get_fixture_config(const std::vector<std::string>& args) {
     uint32_t id = args.size() == 2 ? std::stoi(args[1]) : 0;

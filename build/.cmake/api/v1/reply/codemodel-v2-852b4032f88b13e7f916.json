@@ -1,0 +1,283 @@
+{
+	"configurations" : 
+	[
+		{
+			"abstractTargets" : 
+			[
+				{
+					"directoryIndex" : 4,
+					"id" : "ftxui::@47af7edb050c746b238c",
+					"jsonFile" : "target-ftxui-Debug-603460a61a7ab655caa9.json",
+					"name" : "ftxui",
+					"projectIndex" : 4
+				},
+				{
+					"directoryIndex" : 1,
+					"id" : "nlohmann_json::@c2abc8a4dbe38510fff7",
+					"jsonFile" : "target-nlohmann_json-Debug-a1a3a7366ee266b1440d.json",
+					"name" : "nlohmann_json",
+					"projectIndex" : 1
+				}
+			],
+			"directories" : 
+			[
+				{
+					"build" : ".",
+					"childIndexes" : 
+					[
+						1,
+						2,
+						4
+					],
+					"hasInstallRule" : true,
+					"jsonFile" : "directory-.-Debug-fd6451d79dc282e2f566.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.10"
+					},
+					"projectIndex" : 0,
+					"source" : ".",
+					"targetIndexes" : 
+					[
+						2
+					]
+				},
+				{
+					"abstractTargetIndexes" : 
+					[
+						1
+					],
+					"build" : "lib/json",
+					"jsonFile" : "directory-lib.json-Debug-9af6fbd30d2f8deea32e.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.5"
+					},
+					"parentIndex" : 0,
+					"projectIndex" : 1,
+					"source" : "lib/json"
+				},
+				{
+					"build" : "lib/Utils",
+					"childIndexes" : 
+					[
+						3
+					],
+					"jsonFile" : "directory-lib.Utils-Debug-4d8ccebfbf02c3b79d56.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.10"
+					},
+					"parentIndex" : 0,
+					"projectIndex" : 2,
+					"source" : "lib/Utils",
+					"targetIndexes" : 
+					[
+						5
+					]
+				},
+				{
+					"build" : "lib/Utils/examples",
+					"jsonFile" : "directory-lib.Utils.examples-Debug-ddbe6dcc25f91c6091df.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.10"
+					},
+					"parentIndex" : 2,
+					"projectIndex" : 3,
+					"source" : "lib/Utils/examples",
+					"targetIndexes" : 
+					[
+						4
+					]
+				},
+				{
+					"abstractTargetIndexes" : 
+					[
+						0
+					],
+					"build" : "lib/FTXUI",
+					"childIndexes" : 
+					[
+						5,
+						6
+					],
+					"hasInstallRule" : true,
+					"jsonFile" : "directory-lib.FTXUI-Debug-b84c7bd01a3dc6a39ea3.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.12"
+					},
+					"parentIndex" : 0,
+					"projectIndex" : 4,
+					"source" : "lib/FTXUI",
+					"targetIndexes" : 
+					[
+						0,
+						1,
+						3
+					]
+				},
+				{
+					"build" : "lib/FTXUI/examples",
+					"jsonFile" : "directory-lib.FTXUI.examples-Debug-c7bd80734c05c342ef44.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.12"
+					},
+					"parentIndex" : 4,
+					"projectIndex" : 4,
+					"source" : "lib/FTXUI/examples"
+				},
+				{
+					"build" : "lib/FTXUI/doc",
+					"jsonFile" : "directory-lib.FTXUI.doc-Debug-dac35b75b7a8859d8fdb.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.12"
+					},
+					"parentIndex" : 4,
+					"projectIndex" : 4,
+					"source" : "lib/FTXUI/doc"
+				}
+			],
+			"name" : "Debug",
+			"projects" : 
+			[
+				{
+					"childIndexes" : 
+					[
+						1,
+						2,
+						4
+					],
+					"directoryIndexes" : 
+					[
+						0
+					],
+					"name" : "luckecli",
+					"targetIndexes" : 
+					[
+						2
+					]
+				},
+				{
+					"abstractTargetIndexes" : 
+					[
+						1
+					],
+					"directoryIndexes" : 
+					[
+						1
+					],
+					"name" : "nlohmann_json",
+					"parentIndex" : 0
+				},
+				{
+					"childIndexes" : 
+					[
+						3
+					],
+					"directoryIndexes" : 
+					[
+						2
+					],
+					"name" : "utils",
+					"parentIndex" : 0,
+					"targetIndexes" : 
+					[
+						5
+					]
+				},
+				{
+					"directoryIndexes" : 
+					[
+						3
+					],
+					"name" : "test",
+					"parentIndex" : 2,
+					"targetIndexes" : 
+					[
+						4
+					]
+				},
+				{
+					"abstractTargetIndexes" : 
+					[
+						0
+					],
+					"directoryIndexes" : 
+					[
+						4,
+						5,
+						6
+					],
+					"name" : "ftxui",
+					"parentIndex" : 0,
+					"targetIndexes" : 
+					[
+						0,
+						1,
+						3
+					]
+				}
+			],
+			"targets" : 
+			[
+				{
+					"directoryIndex" : 4,
+					"id" : "component::@47af7edb050c746b238c",
+					"jsonFile" : "target-component-Debug-dd00e368942088c4d36b.json",
+					"name" : "component",
+					"projectIndex" : 4
+				},
+				{
+					"directoryIndex" : 4,
+					"id" : "dom::@47af7edb050c746b238c",
+					"jsonFile" : "target-dom-Debug-9f94b1d2001e94d196fa.json",
+					"name" : "dom",
+					"projectIndex" : 4
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "luckecli::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-luckecli-Debug-683604e8d81d67245e68.json",
+					"name" : "luckecli",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 4,
+					"id" : "screen::@47af7edb050c746b238c",
+					"jsonFile" : "target-screen-Debug-d80df9dbbc512f50589e.json",
+					"name" : "screen",
+					"projectIndex" : 4
+				},
+				{
+					"directoryIndex" : 3,
+					"id" : "test::@f5185953475aafbc6e52",
+					"jsonFile" : "target-test-Debug-bf4401367176b29a7569.json",
+					"name" : "test",
+					"projectIndex" : 3
+				},
+				{
+					"directoryIndex" : 2,
+					"id" : "utils::@ab336d7d9b25821ccbfe",
+					"jsonFile" : "target-utils-Debug-4df2b02b07e21a82ecb7.json",
+					"name" : "utils",
+					"projectIndex" : 2
+				}
+			]
+		}
+	],
+	"kind" : "codemodel",
+	"paths" : 
+	{
+		"build" : "/home/bobi/Coding/luckecli/build",
+		"source" : "/home/bobi/Coding/luckecli"
+	},
+	"version" : 
+	{
+		"major" : 2,
+		"minor" : 10
+	}
+}

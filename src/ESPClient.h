@@ -24,13 +24,12 @@ class ESPClient {
 
     std::optional<std::string> sendRequestOpt(const std::string& request, std::chrono::milliseconds timeout);
 public:
-    ;
     ESPClient(std::string ip, SharedState& state);
     ~ESPClient();
 
     static void stop();
 
-    void sendRequest(const std::string& request);
+    // void sendRequest(const std::string& request);
     void run(const std::string& request, bool jsonres = false, std::chrono::milliseconds timeout = 2000ms);
     std::string runStr(const std::string& request, bool jsonres = false, std::chrono::milliseconds timeout = 2000ms);
 

@@ -24,6 +24,8 @@ public:
 
      bool isSelected() const { return selected; }
      bool shouldQuit() const { return exitRequest;}
+
+     void run();
      bool resolveCommand(const std::string& line);
 
      bool exit(const std::vector<std::string>& = {});
@@ -42,6 +44,10 @@ public:
      bool get_info(const std::vector<std::string>& = {});
      bool presets(const std::vector<std::string>& args = {});
 
+     bool describe(const std::vector<std::string>& = {});
+     bool fixtures(const std::vector<std::string>& = {});
+     bool inputs(const std::vector<std::string>& = {});
+     bool inbytes(const std::vector<std::string>& = {});
      bool get_fixture_info(const std::vector<std::string>& = {});
      bool get_fixture_config(const std::vector<std::string>& = {});
      bool set_fixture_info(const std::vector<std::string>& = {});

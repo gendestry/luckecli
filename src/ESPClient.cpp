@@ -43,28 +43,6 @@ void ESPClient::stop() {
     }
 }
 
-void ESPClient::sendRequest(const std::string& request) {
-    int sock = socket(AF_INET, SOCK_STREAM, 0);
-    if (sock < 0) {
-        logger.error("Socket creation failed: {}", strerror(errno));
-        return;
-    }
-
-    sockaddr_in addr{};
-    addr.sin_family = AF_INET;
-    addr.sin_port = htons(8888);
-    inet_pton(AF_INET, ip_.c_str(), &addr.sin_addr);
-
-    if (connect(sock, (sockaddr*)&addr, sizeof(addr)) < 0) {
-        logger.error("Error connecting: {}", strerror(errno));
-        close(sock);
-        return;
-    }
-
-    send(sock, request.c_str(), request.size(), 0);
-    close(sock);
-}
-
 std::optional<std::string> ESPClient::sendRequestOpt(const std::string& request, std::chrono::milliseconds timeout) {
     int sock = socket(AF_INET, SOCK_STREAM, 0);
     if (sock < 0) {
