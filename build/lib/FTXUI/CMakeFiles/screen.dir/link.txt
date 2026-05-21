@@ -1,2 +1,0 @@
-/nix/store/kilyfvfmh9x9rlaj47ph1916lbc1pnsr-gcc-wrapper-14.3.0/bin/ar qc libftxui-screen.a CMakeFiles/screen.dir/src/ftxui/screen/box.cpp.o CMakeFiles/screen.dir/src/ftxui/screen/color.cpp.o CMakeFiles/screen.dir/src/ftxui/screen/color_info.cpp.o CMakeFiles/screen.dir/src/ftxui/screen/surface.cpp.o CMakeFiles/screen.dir/src/ftxui/screen/screen.cpp.o CMakeFiles/screen.dir/src/ftxui/screen/string.cpp.o CMakeFiles/screen.dir/src/ftxui/screen/terminal.cpp.o
-/nix/store/kilyfvfmh9x9rlaj47ph1916lbc1pnsr-gcc-wrapper-14.3.0/bin/ranlib libftxui-screen.a

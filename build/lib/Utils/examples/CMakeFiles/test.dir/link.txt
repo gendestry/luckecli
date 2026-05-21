@@ -1,1 +1,0 @@
-/nix/store/kilyfvfmh9x9rlaj47ph1916lbc1pnsr-gcc-wrapper-14.3.0/bin/g++ -Wl,--dependency-file=CMakeFiles/test.dir/link.d CMakeFiles/test.dir/lulcek/main.cpp.o -o test  ../libutils.a
