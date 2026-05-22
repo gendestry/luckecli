@@ -2,3 +2,9 @@ cmake_build_debug/
 .idea/
 ./vscode
 build/
+analysis
+.vscode/
+.devcontainer/
+vcpkg_installed/
+.dockerignore
+Dockerfile

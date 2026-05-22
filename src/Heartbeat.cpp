@@ -93,6 +93,12 @@ void Heartbeat::packet_ingest() {
             ClientInfo::Description f;
             f.name = item["name"];
             f.type = item["type"];
+            if(item.contains("basic"))
+            {
+                std::string b = item["basic"];
+                json bjson = json::parse(b);
+                f.num_leds = bjson.value("num_leds", 0);
+            }
 
             info.descriptions.push_back(std::move(f));
         }

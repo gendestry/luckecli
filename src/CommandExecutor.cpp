@@ -67,8 +67,8 @@ bool CommandExecutor::resolveCommand(const std::string& line) {
     }
 
     if (selected) {
-        auto sclient = m_sharedState.getClientByIp(m_client->getIP());
-        auto cname = sclient->descriptions[0].name;
+        auto sclient = m_client->getClientInfo();
+        auto cname = sclient->descriptions[sclient->selected].name;
         log.print("{}{}@{}>{} ", Utils::Font::colorYellow, cname, sclient->ip, Utils::Font::colorReset);
     }
     else {
@@ -192,49 +192,33 @@ void CommandExecutor::bindCommands() {
     }), Command::Usable::SELECTED);
 
 
-    m_cmdList.registerGroup("Fixture info");
+    m_cmdList.registerGroup("Fixture info & config");
 
     // ---------- fixture getters ----------
-    m_cmdList.registerCommand(Command("name", "Get fixture name", "name <number=0>?",
+    m_cmdList.registerCommand(Command("name", "Get or set fixture name", "name <string>?",
     get_fixture_info_cmd), Command::Usable::SELECTED);
 
-    m_cmdList.registerCommand(Command("universe", "Get fixture universe", "universe <number=0>?",
+    m_cmdList.registerCommand(Command("universe", "Get or set fixture universe", "universe <number>?",
     get_fixture_info_cmd), Command::Usable::SELECTED);
 
-    m_cmdList.registerCommand(Command("address", "Get fixture address", "address <number=0>?",
+    m_cmdList.registerCommand(Command("address", "Get or set fixture address", "address <number>?",
     get_fixture_info_cmd), Command::Usable::SELECTED);
 
-    m_cmdList.registerCommand(Command("preset", "Get fixture preset", "preset <number=0>?",
+    m_cmdList.registerCommand(Command("preset", "Get or set fixture preset", "preset <number>?",
     get_fixture_info_cmd), Command::Usable::SELECTED);
 
-    m_cmdList.registerCommand(Command("highlight", "Highlight fixture", "highlight <number=0>?",
+    m_cmdList.registerCommand(Command("highlight", "Get or set highlight", "highlight <boolean>?",
     get_fixture_info_cmd), Command::Usable::SELECTED);
 
-    m_cmdList.registerCommand(Command("config", "Get full fixture config", "config <number=0>?",
+    m_cmdList.registerCommand(Command("config", "Get full fixture config", "config",
     [this](const std::vector<std::string>& args) {
         return get_fixture_config(args);
     }), Command::Usable::SELECTED);
 
-    m_cmdList.registerCommand(Command("inbytes", "Get full dmx array", "inbytes <number=0>?",
+    m_cmdList.registerCommand(Command("inbytes", "Get full dmx array", "inbytes",
     [this](const std::vector<std::string>& args) {
         return inbytes(args);
     }), Command::Usable::SELECTED);
-
-
-    m_cmdList.registerGroup("Fixture config");
-
-    // ---------- fixture setters ----------
-    m_cmdList.registerCommand(Command("setname", "Set fixture name", "setname <string> <number=0>?",
-    set_fixture_info_cmd), Command::Usable::SELECTED);
-
-    m_cmdList.registerCommand(Command("setuniverse", "Set fixture universe", "setuniverse <number> <number=0>?",
-    set_fixture_info_cmd), Command::Usable::SELECTED);
-
-    m_cmdList.registerCommand(Command("setaddress", "Set fixture address", "setaddress <number> <number=0>?",
-    set_fixture_info_cmd), Command::Usable::SELECTED);
-
-    m_cmdList.registerCommand(Command("setpreset", "Set fixture preset", "setpreset <number> <number=0>?",
-    set_fixture_info_cmd), Command::Usable::SELECTED);
 
     m_cmdList.pushGroup();
 }
@@ -293,11 +277,21 @@ bool CommandExecutor::reboot(const std::vector<std::string>&) {
 bool CommandExecutor::list(const std::vector<std::string>&) {
     log.println("Fixtures online:");
     int j = 0;
+
+    auto basicAppend = [this](Utils::Text::Stream& ss, const ClientInfo& info, int i){
+        ss << Utils::Font::colorBlue << info.descriptions[i].name << Utils::Font::colorReset;
+        if(info.descriptions[i].num_leds != 0)
+        {
+            ss << Utils::Font::colorByRGB(50,50,50) << " (" << std::to_string(info.descriptions[i].num_leds) << " leds)" << Utils::Font::colorReset;
+        }
+    };
+
     for (auto clientinfo : m_sharedState.getClients()) {
         Utils::Text::Stream stream;
-        stream << clientinfo->descriptions[0].name;
+        basicAppend(stream, *clientinfo, 0);
         for (int i = 1; i < clientinfo->descriptions.size(); i++) {
-            stream << ", " << clientinfo->descriptions[i].name;
+            stream << ", ";
+            basicAppend(stream, *clientinfo, i);
         }
         log.print(" - {}: {} {}({}){}", j++, stream.end(), Utils::Font::colorItalic, clientinfo->ip, Utils::Font::colorReset);
         log.println("{}{} v{}{}", Utils::Font::colorGreen, Utils::Font::colorItalic, clientinfo->version, Utils::Font::colorReset);
@@ -335,10 +329,10 @@ bool CommandExecutor::select(const std::vector<std::string>& args) {
     }
     else {
         // selectIndex(i);
-        const auto ip = m_sharedState.getClients()[i]->ip;
-        log.debug("Selected: {} with ip {}", i, ip);
+        const auto cl = m_sharedState.getClients()[i];
+        log.debug("Selected: {} with ip {}", i, cl->ip);
         selected = true;
-        m_client = std::make_unique<ESPClient>(ip, m_sharedState);
+        m_client = std::make_unique<ESPClient>(cl, m_sharedState);
     }
     return true;
         // log.error("Required inputs: 2, given: {}", args.size());
@@ -347,7 +341,7 @@ bool CommandExecutor::select(const std::vector<std::string>& args) {
 bool CommandExecutor::selectName(const std::vector<std::string>& args) {
     auto c = m_sharedState.getClientByName(args[0]);
     selected = true;
-    m_client = std::make_unique<ESPClient>(c->ip, m_sharedState);
+    m_client = std::make_unique<ESPClient>(c, m_sharedState);
 
     return true;
 }
@@ -475,10 +469,16 @@ struct FixtureConfig {
         id = v.value("id", -1);
         name = v.value("name", "");
         type = v.value("type", "");
-        universe = v.value("universe", 0);
-        address = v.value("address", 0);
+        universe = v.value("universe", -1);
+        address = v.value("address", -1);
         presetIndex = v.value("presetIndex", -1);
         numPresets = v.value("numPresets", -1);
+    }
+
+    void applyOffset(int offset)
+    {
+        address += address == -1 ? 0 : offset; 
+        presetIndex += presetIndex == -1 ? 0 : offset; 
     }
 };
 
@@ -651,8 +651,8 @@ bool CommandExecutor::inputs(const std::vector<std::string>& args)
 bool CommandExecutor::inbytes(const std::vector<std::string>& args)
 {
     std::string cmd = args[0];
-    uint32_t id = args.size() == 2 ? std::stoi(args[1]) : 0;
-    auto resp = m_client->runStr(JSONtemp::stringify("getfixture", "id", id, "value", cmd), false);
+    // uint32_t id = args.size() == 2 ? std::stoi(args[1]) : 0;
+    auto resp = m_client->runStr(JSONtemp::stringify("getfixture", "id", m_client->clientID(), "value", cmd), false);
 
     using nlohmann::json;    
     try
@@ -699,22 +699,10 @@ bool CommandExecutor::inbytes(const std::vector<std::string>& args)
 }
 
 
-bool CommandExecutor::get_fixture_info(const std::vector<std::string>& args) {
-    std::string cmd = args[0];
-    std::vector<std::string> arr = {"name", "universe", "address", "highlight", "config"};
-    if (std::ranges::find(arr, cmd) != arr.end() || cmd == "preset") {
-        if (cmd == "preset") cmd = "presetIndex";
-        log.debug("{} exists in array", cmd);
-        uint32_t id = args.size() == 2 ? std::stoi(args[1]) : 0;
-        m_client->run(JSONtemp::stringify("getfixture", "id", id, "value", cmd), false);
-        return true;
-    }
-    return false;
-}
 
 bool CommandExecutor::get_fixture_config(const std::vector<std::string>& args) {
-    uint32_t id = args.size() == 2 ? std::stoi(args[1]) : 0;
-    auto ret = m_client->runStr(JSONtemp::stringify("getfixture", "id", id, "value", "config"), false);
+    // uint32_t id = args.size() == 2 ? std::stoi(args[1]) : 0;
+    auto ret = m_client->runStr(JSONtemp::stringify("getfixture", "id", m_client->clientID(), "value", "config"), false);
     using json = nlohmann::json;
 
     json data = json::parse(ret);
@@ -723,45 +711,46 @@ bool CommandExecutor::get_fixture_config(const std::vector<std::string>& args) {
     auto v = respjson["value"];
     FixtureConfig cfg(v);
 
-    log.println("Fixture '{}' info:", cfg.name);
-    log.println(" - universe: {}", cfg.universe);
-    log.println(" - address: {}", cfg.address);
-    log.println(" - selected preset: {}", cfg.presetIndex);
+    log.println("Fixture '{}' [{}]:", cfg.name, cfg.type);
+    log.println(" - patch: uni {}, addr {}, preset {}", cfg.universe, cfg.address, cfg.presetIndex);
     log.println(" - number of presets: {}", cfg.numPresets);
-    log.println(" - type: '{}'", cfg.type);
+    auto nleds = m_client->getClientInfo()->descriptions[m_client->clientID()].num_leds;
+    if(nleds != 0)
+    {
+        log.println(" - num leds: {}", nleds);
+    }
     return true;
 }
 
-bool CommandExecutor::set_fixture_info(const std::vector<std::string> & args) {
+bool CommandExecutor::get_fixture_info(const std::vector<std::string> & args) {
     std::string cmd = args[0];
-    std::unordered_map<std::string, std::string> mapp;
-    mapp["setname"] ="name";
-    mapp["setuniverse"] = "universe";
-    mapp["setaddress"] = "address";
-    mapp["setpreset"] = "presetIndex";
-
-    if (mapp.contains(cmd)) {
-        log.debug("{} exists in array", cmd);
-        uint32_t id = args.size() == 3 ? std::stoi(args[2]) : 0;
-        // client->run(JSONtemp::stringify("setfixture", "id", id, mapp[cmd], args[1]), false);
-        if (args.size() >= 2) {
-            // auto test = JSONtemp::stringify("setfixture", "id", id, mapp[cmd], cmd == "setname" ? args[1] : std::stoi(args[1]));
-            if (cmd == "setname") {
-                m_client->run(JSONtemp::stringify("setfixture", "id", id, mapp[cmd], args[1]), false);
-
-            }
-            else {
-                m_client->run(JSONtemp::stringify("setfixture", "id", id, mapp[cmd], std::stoi(args[1])), false);
-            }
-            // client->run(JSONtemp::stringify("setfixture", mapp[cmd], args[1]), false);
-        }
-        else {
-            // client->run(JSONtemp::stringify(mapp[cmd]), false);
-        }
-        return true;
+    if(cmd == "preset")
+    {
+        cmd = "presetIndex";
     }
 
-    return false;
+    log.debug("{} exists in array", cmd);
+    switch(args.size())
+    {
+        case 1:
+            m_client->run(JSONtemp::stringify("getfixture", "id", m_client->clientID(), "value", cmd), false);
+            break;
+        case 2:
+            if (cmd == "name") {
+                m_client->run(JSONtemp::stringify("setfixture", "id", m_client->clientID(), cmd, args[1]), false);
+            }
+            else if (cmd == "highlight") {
+                m_client->run(JSONtemp::stringify("setfixture", "id", m_client->clientID(), cmd, args[1] == "true" ? true : false), false);
+            }
+            else {
+                m_client->run(JSONtemp::stringify("setfixture", "id", m_client->clientID(), cmd, std::stoi(args[1])), false);
+            }
+            break;
+        // default:
+        //     return false;
+    }
+
+    return true;
 }
 
 

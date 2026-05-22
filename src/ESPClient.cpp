@@ -16,8 +16,8 @@ std::atomic<bool> ESPClient::running = true;
 bool ESPClient::inited = false;
 SafeQueue<std::string> ESPClient::queue;
 
-ESPClient::ESPClient(std::string ip, SharedState& state)
-    : ip_(std::move(ip)), logger("CONFIG"), m_sharedState(state)
+ESPClient::ESPClient(std::shared_ptr<ClientInfo> cinfo, SharedState& state)
+    : clientInfo(std::move(cinfo)), ip_(clientInfo->ip), logger("CONFIG"), m_sharedState(state)
 {
     if (!inited) {
         inited = true;

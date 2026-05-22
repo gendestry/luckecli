@@ -57,10 +57,13 @@ const std::shared_ptr<ClientInfo> SharedState::getClientByIp(const std::string& 
 std::shared_ptr<ClientInfo> SharedState::getClientByName(const std::string& name) {
     std::lock_guard lock(mutex);
     for (auto& client : clients_list) {
+        int i = 0;
         for (auto& desc : client->descriptions) {
             if (desc.name == name) {
+                client->selected = i;
                 return client;
             }
+            i++;
         }
     }
 

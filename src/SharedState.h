@@ -17,7 +17,9 @@ struct ClientInfo {
     struct Description {
         std::string name;
         std::string type;
+        int num_leds = 0;
     };
+    int selected = 0;
     std::string version = "outdated";
     std::string ip;
     std::vector<Description>descriptions;

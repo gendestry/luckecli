@@ -2,6 +2,7 @@
 #include <string>
 #include <atomic>
 #include <thread>
+#include <memory>
 #include <optional>
 
 #include "Diary/Log.h"
@@ -21,10 +22,11 @@ class ESPClient {
     static void listen_ingest_tcp();
 
     SharedState& m_sharedState;
+    std::shared_ptr<ClientInfo> clientInfo;
 
     std::optional<std::string> sendRequestOpt(const std::string& request, std::chrono::milliseconds timeout);
 public:
-    ESPClient(std::string ip, SharedState& state);
+    ESPClient(std::shared_ptr<ClientInfo> cinfo, SharedState& state);
     ~ESPClient();
 
     static void stop();
@@ -32,6 +34,16 @@ public:
     // void sendRequest(const std::string& request);
     void run(const std::string& request, bool jsonres = false, std::chrono::milliseconds timeout = 2000ms);
     std::string runStr(const std::string& request, bool jsonres = false, std::chrono::milliseconds timeout = 2000ms);
+
+    const int clientID() const
+    {
+        return clientInfo->selected;
+    }
+
+    std::shared_ptr<ClientInfo> getClientInfo() const
+    {
+        return clientInfo;
+    }
 
     const std::string& getIP() const {
         return ip_;
