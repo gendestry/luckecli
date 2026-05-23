@@ -22,25 +22,25 @@ class ESPClient {
     static void listen_ingest_tcp();
 
     SharedState& m_sharedState;
-    std::shared_ptr<ClientInfo> clientInfo;
+    const ClientInfo& clientInfo;
 
     std::optional<std::string> sendRequestOpt(const std::string& request, std::chrono::milliseconds timeout);
 public:
-    ESPClient(std::shared_ptr<ClientInfo> cinfo, SharedState& state);
+    ESPClient(const ClientInfo& cinfo, SharedState& state);
     ~ESPClient();
 
     static void stop();
 
     // void sendRequest(const std::string& request);
-    void run(const std::string& request, bool jsonres = false, std::chrono::milliseconds timeout = 2000ms);
-    std::string runStr(const std::string& request, bool jsonres = false, std::chrono::milliseconds timeout = 2000ms);
+    void run(const std::string& request, bool jsonres = false, std::chrono::milliseconds timeout = 4000ms);
+    std::string runStr(const std::string& request, bool jsonres = false, std::chrono::milliseconds timeout = 4000ms);
 
     const int clientID() const
     {
-        return clientInfo->selected;
+        return clientInfo.selected;
     }
 
-    std::shared_ptr<ClientInfo> getClientInfo() const
+    const ClientInfo& getClientInfo() const
     {
         return clientInfo;
     }
@@ -151,4 +151,3 @@ private:
 //     std::atomic<bool> running_;
 // };
 
-#include "SafeQueue.h"

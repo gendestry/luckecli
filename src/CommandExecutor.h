@@ -37,6 +37,8 @@ public:
      bool select(const std::vector<std::string>& = {});
      bool selectName(const std::vector<std::string>& = {});
      bool selectIP(const std::vector<std::string>& = {});
+     bool setuniverse(const std::vector<std::string>& = {});
+     bool setpreset(const std::vector<std::string>& = {});
 
      bool deselect(const std::vector<std::string>& = {});
 
@@ -50,7 +52,6 @@ public:
      bool inbytes(const std::vector<std::string>& = {});
      bool get_fixture_info(const std::vector<std::string>& = {});
      bool get_fixture_config(const std::vector<std::string>& = {});
-     bool set_fixture_info(const std::vector<std::string>& = {});
 
      bool setwifi(const std::vector<std::string>&);
 };

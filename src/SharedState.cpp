@@ -23,11 +23,23 @@ void SharedState::triggerChange() {
 void SharedState::addClient(ClientInfo client, std::string ip) {
     std::lock_guard lock(mutex);
     if (clients.contains(ip)) {
-        clients[ip]->descriptions = std::move(client.descriptions);
+        auto& vec = clients[ip];
+        if(vec.size() > client.selected)
+        {
+            auto& m = clients[ip][client.selected];
+            m.get().description = std::move(client.description);
+        }
+        else
+        {
+            clients_list.push_back(std::move(client));
+            clients[ip].push_back(clients_list.back());        
+        }
     }
     else {
-        clients[ip] = std::make_shared<ClientInfo>(std::move(client));
-        clients_list.push_back(clients[ip]);
+        clients_list.push_back(std::move(client));
+        clients[ip].push_back(clients_list.back());
+        // clients[ip] = std::make_shared<ClientInfo>(std::move(client));
+        // clients_list.push_back(clients[ip]);
         log.debug("Added new client at ip: {}", ip);
     }
 
@@ -46,31 +58,37 @@ const std::vector<std::string>& SharedState::getResponses() {
     return responses;
 }
 
-const std::shared_ptr<ClientInfo> SharedState::getClientByIp(const std::string& ip) {
-    std::lock_guard lock(mutex);
-    if (clients.contains(ip)) {
-        return clients[ip];
-    }
-    throw std::logic_error("Unknown client ip");
-}
+// const std::shared_ptr<ClientInfo> SharedState::getClientByIp(const std::string& ip) {
+//     std::lock_guard lock(mutex);
+//     if (clients.contains(ip)) {
+//         return clients[ip];
+//     }
+//     throw std::logic_error("Unknown client ip");
+// }
 
-std::shared_ptr<ClientInfo> SharedState::getClientByName(const std::string& name) {
+const ClientInfo& SharedState::getClientByName(const std::string& name) {
     std::lock_guard lock(mutex);
+    // auto& cls = clients_list | std::ranges::
     for (auto& client : clients_list) {
-        int i = 0;
-        for (auto& desc : client->descriptions) {
-            if (desc.name == name) {
-                client->selected = i;
-                return client;
-            }
-            i++;
+        if(client.description.name == name)
+        {
+            // return std::make_unique<ClientInfo>(client);
+            return client;
         }
+        // for (auto& desc : client->descriptions) {
+        //     if (desc.name == name) {
+        //         client->selected = i;
+        //         return client;
+        //     }
+        //     i++;
+        // }
     }
 
-    return nullptr;
+    throw std::runtime_error("WTF");
+    // return nullptr;
 }
 
-std::vector<std::shared_ptr<ClientInfo>> SharedState::getClients() {
+const std::list<ClientInfo>& SharedState::getClients() {
     std::lock_guard lock(mutex);
     return clients_list;
 }

@@ -13,22 +13,23 @@
 
 #include "Diary/Log.h"
 
+
 struct ClientInfo {
     struct Description {
         std::string name;
         std::string type;
         int num_leds = 0;
-    };
+    } description;
     int selected = 0;
     std::string version = "outdated";
     std::string ip;
-    std::vector<Description>descriptions;
+    // std::vector<Description>descriptions;
 };
 
 class SharedState {
     Log log;
-    std::unordered_map<std::string, std::shared_ptr<ClientInfo>> clients;
-    std::vector<std::shared_ptr<ClientInfo>> clients_list;
+    std::unordered_map<std::string, std::vector<std::reference_wrapper<ClientInfo>>> clients;
+    std::list<ClientInfo> clients_list;
     std::mutex mutex;
 
     std::mutex callbackMutex;
@@ -47,7 +48,8 @@ public:
 
     const std::vector<std::string>& getResponses();
     const std::shared_ptr<ClientInfo> getClientByIp(const std::string& ip);
-    std::shared_ptr<ClientInfo> getClientByName(const std::string& name);
+    // std::unique_ptr<ClientInfo> getClientByName(const std::string& name);
+    const ClientInfo& getClientByName(const std::string& name);
 
-    std::vector<std::shared_ptr<ClientInfo>> getClients();
+    const std::list<ClientInfo>& getClients();
 };

@@ -81,29 +81,29 @@ void Heartbeat::packet_ingest() {
         std::string data(buffer, bytes_received);
 
         using json = nlohmann::json;
+
         json jarr = json::parse(data);
+        std::string version = jarr.value("version", "outdated");
 
-        ClientInfo info;
-        info.ip = ip;
-        if (jarr.contains("version")) {
-            info.version = jarr["version"];
-        }
-
+        int id = 0;
         for (const auto& item : jarr["fixtures"]) {
-            ClientInfo::Description f;
-            f.name = item["name"];
-            f.type = item["type"];
+            // ClientInfo::Description f;
+            ClientInfo info;
+            info.selected = id++;
+            info.ip = ip;
+            info.version = version;
+            info.description.name = item.value("name", "");
+            info.description.type = item.value("type", "");
             if(item.contains("basic"))
             {
                 std::string b = item["basic"];
                 json bjson = json::parse(b);
-                f.num_leds = bjson.value("num_leds", 0);
+                info.description.num_leds = bjson.value("num_leds", 0);
             }
 
-            info.descriptions.push_back(std::move(f));
+            m_sharedState.addClient(std::move(info), ip);
         }
 
-        m_sharedState.addClient(std::move(info), ip);
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 

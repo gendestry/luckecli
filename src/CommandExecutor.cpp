@@ -68,8 +68,10 @@ bool CommandExecutor::resolveCommand(const std::string& line) {
 
     if (selected) {
         auto sclient = m_client->getClientInfo();
-        auto cname = sclient->descriptions[sclient->selected].name;
-        log.print("{}{}@{}>{} ", Utils::Font::colorYellow, cname, sclient->ip, Utils::Font::colorReset);
+        auto cname = sclient.description.name;
+        auto ctype = sclient.description.type;
+        log.print("{}{}:{}{}{}{}>{} ", Utils::Font::colorMagenta, cname, Utils::Font::colorItalic, ctype, Utils::Font::colorReset, Utils::Font::colorMagenta, Utils::Font::colorReset);
+        
     }
     else {
         log.print("> ");
@@ -96,6 +98,16 @@ void CommandExecutor::bindCommands() {
         return this->list();
     }), Command::Usable::UNSELECTED);
 
+    m_cmdList.registerCommand(Command("setuniverse", "Sel all fixture config", "setuniverse <number,number,...> = <number>",
+    [this](const std::vector<std::string>& args) {
+        return setuniverse(args);
+    }), Command::Usable::UNSELECTED);
+
+    m_cmdList.registerCommand(Command("setpreset", "Sel all fixture preset", "setuniverse <number,number,...> = <number>",
+    [this](const std::vector<std::string>& args) {
+        return setpreset(args);
+    }), Command::Usable::UNSELECTED);
+
     m_cmdList.registerCommand(Command("select", "Select an item", "select <number>",
     [this](const std::vector<std::string>& args) {
         return select(args);
@@ -111,7 +123,8 @@ void CommandExecutor::bindCommands() {
 
     m_cmdList.registerCommandNoname(Command("<name>", "Select fixture by name", "<name>",
     [this](const std::vector<std::string>& args) {
-        return !(args.empty() || !m_sharedState.getClientByName(args[0]));
+        // return !(args.empty() || !m_sharedState.getClientByName(args[0]));
+        return !(args.empty()); 
     },
     [this](const std::vector<std::string>& args) {
         return selectName(args);
@@ -138,10 +151,6 @@ void CommandExecutor::bindCommands() {
 
     auto get_fixture_info_cmd = [this](const std::vector<std::string>& args) {
         return get_fixture_info(args);
-    };
-
-    auto set_fixture_info_cmd = [this](const std::vector<std::string>& args) {
-        return set_fixture_info(args);
     };
 
     m_cmdList.registerGroup("Engine config");
@@ -278,23 +287,16 @@ bool CommandExecutor::list(const std::vector<std::string>&) {
     log.println("Fixtures online:");
     int j = 0;
 
-    auto basicAppend = [this](Utils::Text::Stream& ss, const ClientInfo& info, int i){
-        ss << Utils::Font::colorBlue << info.descriptions[i].name << Utils::Font::colorReset;
-        if(info.descriptions[i].num_leds != 0)
-        {
-            ss << Utils::Font::colorByRGB(50,50,50) << " (" << std::to_string(info.descriptions[i].num_leds) << " leds)" << Utils::Font::colorReset;
-        }
-    };
-
-    for (auto clientinfo : m_sharedState.getClients()) {
+    for (const auto& info : m_sharedState.getClients()) {
         Utils::Text::Stream stream;
-        basicAppend(stream, *clientinfo, 0);
-        for (int i = 1; i < clientinfo->descriptions.size(); i++) {
-            stream << ", ";
-            basicAppend(stream, *clientinfo, i);
+        stream << Utils::Font::colorBlue << info.description.name << Utils::Font::colorReset;
+        if(info.description.num_leds != 0)
+        {
+            stream << Utils::Font::colorByRGB(50,50,50) << " (" << std::to_string(info.description.num_leds) << " leds)" << Utils::Font::colorReset;
         }
-        log.print(" - {}: {} {}({}){}", j++, stream.end(), Utils::Font::colorItalic, clientinfo->ip, Utils::Font::colorReset);
-        log.println("{}{} v{}{}", Utils::Font::colorGreen, Utils::Font::colorItalic, clientinfo->version, Utils::Font::colorReset);
+
+        log.print(" - {}: {} {}({}){}", j++, stream.end(), Utils::Font::colorItalic, info.ip, Utils::Font::colorReset);
+        log.println("{}{} v{}{}", Utils::Font::colorGreen, Utils::Font::colorItalic, info.version, Utils::Font::colorReset);
     }
     return true;
 }
@@ -302,12 +304,46 @@ bool CommandExecutor::list(const std::vector<std::string>&) {
 bool CommandExecutor::all_config(const std::vector<std::string>&) {
     const auto& allclients = m_sharedState.getClients();
     for (int i = 0; i < allclients.size(); i++) {
-        auto& client = allclients[i];
+        // auto& client = allclients[i];
         select({std::to_string(i)});
         get_fixture_config();
         deselect();
     }
 
+    return true;
+}
+
+bool CommandExecutor::setuniverse(const std::vector<std::string>& args) {
+    auto ids = Utils::String::split(args[1], ",");
+    auto unis = Utils::String::split(args[2], ",");
+    if(unis.size() == 1 || unis.size() == ids.size())
+    {
+        for(int i = 0; i < ids.size(); i++)
+        {
+            auto& id = ids[i];
+            auto uni = unis[i % unis.size()];
+            select({id});
+            get_fixture_info(std::vector<std::string>{"universe", uni});
+            deselect();
+        }
+    }
+    return true;
+}
+
+bool CommandExecutor::setpreset(const std::vector<std::string>& args) {
+    auto ids = Utils::String::split(args[1], ",");
+    auto unis = Utils::String::split(args[2], ",");
+    if(unis.size() == 1 || unis.size() == ids.size())
+    {
+        for(int i = 0; i < ids.size(); i++)
+        {
+            auto& id = ids[i];
+            auto uni = unis[i % unis.size()];
+            select(std::vector<std::string>{id});
+            get_fixture_info(std::vector<std::string>{"preset", uni});
+            deselect();
+        }
+    }
     return true;
 }
 
@@ -329,8 +365,11 @@ bool CommandExecutor::select(const std::vector<std::string>& args) {
     }
     else {
         // selectIndex(i);
-        const auto cl = m_sharedState.getClients()[i];
-        log.debug("Selected: {} with ip {}", i, cl->ip);
+        // const auto cl = std::advance(m_sharedState.getClients().begin(), i);
+        auto it = m_sharedState.getClients().begin();
+        std::advance(it, i);
+        const auto& cl = *it;
+        log.debug("Selected: {} with ip {}", i, (*it).ip);
         selected = true;
         m_client = std::make_unique<ESPClient>(cl, m_sharedState);
     }
@@ -339,9 +378,9 @@ bool CommandExecutor::select(const std::vector<std::string>& args) {
 }
 
 bool CommandExecutor::selectName(const std::vector<std::string>& args) {
-    auto c = m_sharedState.getClientByName(args[0]);
+    // auto c = m_sharedState.getClientByName(args[0]);
     selected = true;
-    m_client = std::make_unique<ESPClient>(c, m_sharedState);
+    m_client = std::make_unique<ESPClient>(m_sharedState.getClientByName(args[0]), m_sharedState);
 
     return true;
 }
@@ -702,23 +741,33 @@ bool CommandExecutor::inbytes(const std::vector<std::string>& args)
 
 bool CommandExecutor::get_fixture_config(const std::vector<std::string>& args) {
     // uint32_t id = args.size() == 2 ? std::stoi(args[1]) : 0;
-    auto ret = m_client->runStr(JSONtemp::stringify("getfixture", "id", m_client->clientID(), "value", "config"), false);
+    auto ret = m_client->runStr(JSONtemp::stringify("getfixture", "id", m_client->clientID(), "value", "config"), false, std::chrono::milliseconds{7000});
     using json = nlohmann::json;
 
-    json data = json::parse(ret);
+    json data;
+    try{
+        data = json::parse(ret);
+    }
+    catch (std::exception e)
+    {
+        log.error(e.what());
+        return false;
+    }
 
     json respjson = json::parse(data["response"].get<std::string>());
     auto v = respjson["value"];
     FixtureConfig cfg(v);
 
-    log.println("Fixture '{}' [{}]:", cfg.name, cfg.type);
-    log.println(" - patch: uni {}, addr {}, preset {}", cfg.universe, cfg.address, cfg.presetIndex);
-    log.println(" - number of presets: {}", cfg.numPresets);
-    auto nleds = m_client->getClientInfo()->descriptions[m_client->clientID()].num_leds;
+    // auto type = Utils::String::concat(Utils::Font::colorItalic, Utils::Font::colorByRGB(20,20,100), "[", cfg.type, "]", Utils::Font::colorReset);
+    log.print(" - {}{}{}:", Utils::Font::colorBlue, cfg.name, Utils::Font::colorReset);
+    log.print(" uni {}, addr {}, preset {} out of {}", cfg.universe, cfg.address, cfg.presetIndex, cfg.numPresets);
+    // log.println(" - number of presets: {}", cfg.numPresets);
+    auto nleds = m_client->getClientInfo().description.num_leds;
     if(nleds != 0)
     {
-        log.println(" - num leds: {}", nleds);
+        log.print(", num leds: {}", nleds);
     }
+    log.println("");
     return true;
 }
 

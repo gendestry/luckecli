@@ -16,8 +16,8 @@ std::atomic<bool> ESPClient::running = true;
 bool ESPClient::inited = false;
 SafeQueue<std::string> ESPClient::queue;
 
-ESPClient::ESPClient(std::shared_ptr<ClientInfo> cinfo, SharedState& state)
-    : clientInfo(std::move(cinfo)), ip_(clientInfo->ip), logger("CONFIG"), m_sharedState(state)
+ESPClient::ESPClient(const ClientInfo& cinfo, SharedState& state)
+    : clientInfo(cinfo), ip_(clientInfo.ip), logger("CONFIG"), m_sharedState(state)
 {
     if (!inited) {
         inited = true;
@@ -69,12 +69,12 @@ std::optional<std::string> ESPClient::sendRequestOpt(const std::string& request,
 
 void ESPClient::run(const std::string& request, bool jsonres, std::chrono::milliseconds timeout){
     auto result = sendRequestOpt(request, timeout);
-    if (!result) {
+    if (!result.has_value()) {
         logger.error("No response");
         return;
     }
     using json = nlohmann::json;
-    json data = json::parse(*result);
+    json data = json::parse(result.value());
     std::string response = data["response"];
     std::string status = data["status"];
     if (status == "OK") {
