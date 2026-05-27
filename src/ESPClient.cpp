@@ -75,24 +75,12 @@ void ESPClient::run(const std::string& request, bool jsonres, std::chrono::milli
     }
     using json = nlohmann::json;
     json data = json::parse(result.value());
-    std::string response = data["response"];
-    std::string status = data["status"];
-    if (status == "OK") {
-        // logger.toggleScope();
-        if (jsonres) {
-            json responseJson = json::parse(response);
-            logger.println("{}", responseJson.dump(2));
-            m_sharedState.addResponse(responseJson.dump(2));
-        }
-        else {
-            logger.println("{}", response.empty() ? "Done" : response);
-            m_sharedState.addResponse(response.empty() ? "Done" : response);
-        }
-        // logger.toggleScope();
+    if (data.contains("err")) {
+        logger.error("{}", data["err"].get<std::string>());
+    } else {
+        logger.println("{}", data.dump(2));
     }
-    else {
-        logger.error("{}", response);
-    }
+    m_sharedState.addResponse(result.value());
 };
 
 std::string ESPClient::runStr(const std::string& request, bool jsonres, std::chrono::milliseconds timeout){

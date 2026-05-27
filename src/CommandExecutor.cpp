@@ -5,13 +5,15 @@
 #include "CommandExecutor.h"
 #include "Utils/Text/String.h"
 #include "JSONtemp.h"
+#include "Theme.h"
 #include <nlohmann/json.hpp>
 #include <iostream>
+#include <thread>
+#include <chrono>
+#include <map>
 
 CommandExecutor::CommandExecutor(SharedState& state)
     : log("Command"), m_sharedState(state) {
-    // log.toggleScope();
-
     bindCommands();
 }
 
@@ -68,10 +70,10 @@ bool CommandExecutor::resolveCommand(const std::string& line) {
 
     if (selected) {
         auto sclient = m_client->getClientInfo();
-        auto cname = sclient.description.name;
-        auto ctype = sclient.description.type;
-        log.print("{}{}:{}{}{}{}>{} ", Utils::Font::colorMagenta, cname, Utils::Font::colorItalic, ctype, Utils::Font::colorReset, Utils::Font::colorMagenta, Utils::Font::colorReset);
-        
+        log.print("{}{}{}:{}{}{}{}{} ",
+            Theme::name(), sclient.description.name, Theme::r(),
+            Theme::dim(), sclient.description.type, Theme::r(),
+            Theme::name(), "> ", Theme::r());
     }
     else {
         log.print("> ");
@@ -88,6 +90,11 @@ void CommandExecutor::bindCommands() {
         return exit(args);
     }), Command::Usable::ANYTIME);
 
+    m_cmdList.registerCommand(Command("refresh", "Clear all clients and wait for heartbeat", "refresh",
+    [this](const std::vector<std::string>& args) {
+        return refresh(args);
+    }), Command::Usable::ANYTIME);
+
     m_cmdList.registerCommand(Command("help", "Prints help", "help",
     [this](const std::vector<std::string>& args) {
         return help(args);
@@ -98,12 +105,12 @@ void CommandExecutor::bindCommands() {
         return this->list();
     }), Command::Usable::UNSELECTED);
 
-    m_cmdList.registerCommand(Command("setuniverse", "Sel all fixture config", "setuniverse <number,number,...> = <number>",
+    m_cmdList.registerCommand(Command("setuniverse", "Set fixture universe(s)", "setuniverse <id,id,...> <universe,universe,...>",
     [this](const std::vector<std::string>& args) {
         return setuniverse(args);
     }), Command::Usable::UNSELECTED);
 
-    m_cmdList.registerCommand(Command("setpreset", "Sel all fixture preset", "setuniverse <number,number,...> = <number>",
+    m_cmdList.registerCommand(Command("setpreset", "Set fixture preset(s)", "setpreset <id,id,...> <preset,preset,...>",
     [this](const std::vector<std::string>& args) {
         return setpreset(args);
     }), Command::Usable::UNSELECTED);
@@ -123,8 +130,7 @@ void CommandExecutor::bindCommands() {
 
     m_cmdList.registerCommandNoname(Command("<name>", "Select fixture by name", "<name>",
     [this](const std::vector<std::string>& args) {
-        // return !(args.empty() || !m_sharedState.getClientByName(args[0]));
-        return !(args.empty()); 
+        return !(args.empty());
     },
     [this](const std::vector<std::string>& args) {
         return selectName(args);
@@ -155,7 +161,6 @@ void CommandExecutor::bindCommands() {
 
     m_cmdList.registerGroup("Engine config");
 
-    // ---------- selected commands ----------
     m_cmdList.registerCommand(Command("wifianimation", "Configure WiFi animation task", "wifianimation <true/false>?",
     task_config_cmd), Command::Usable::SELECTED);
 
@@ -173,13 +178,12 @@ void CommandExecutor::bindCommands() {
 
     m_cmdList.registerGroup("Engine info");
 
-    // ---------- grouped info commands ----------
-    m_cmdList.registerCommand(Command("describe", "Show info", "describe",
+    m_cmdList.registerCommand(Command("describe", "Show engine & wifi state", "describe",
     [this](const std::vector<std::string>& args) {
         return describe(args);
     }), Command::Usable::SELECTED);
 
-    m_cmdList.registerCommand(Command("fixtures", "Show fixtures info", "fixtures",
+    m_cmdList.registerCommand(Command("fixtures", "Show all fixtures", "fixtures",
     [this](const std::vector<std::string>& args) {
         return fixtures(args);
     }), Command::Usable::SELECTED);
@@ -189,21 +193,14 @@ void CommandExecutor::bindCommands() {
         return inputs(args);
     }), Command::Usable::SELECTED);
 
-    m_cmdList.registerCommand(Command("presets", "Show presets info", "presets",
+    m_cmdList.registerCommand(Command("presets", "Show fixture presets", "presets",
     [this](const std::vector<std::string>& args) {
         return presets(args);
-    }), Command::Usable::SELECTED);
-
-    m_cmdList.registerCommand(Command("ip", "Show IP info", "",
-    [this](const std::vector<std::string>& args) {
-        m_client->run(JSONtemp::stringify(args[0]), false);
-        return true;
     }), Command::Usable::SELECTED);
 
 
     m_cmdList.registerGroup("Fixture info & config");
 
-    // ---------- fixture getters ----------
     m_cmdList.registerCommand(Command("name", "Get or set fixture name", "name <string>?",
     get_fixture_info_cmd), Command::Usable::SELECTED);
 
@@ -216,17 +213,15 @@ void CommandExecutor::bindCommands() {
     m_cmdList.registerCommand(Command("preset", "Get or set fixture preset", "preset <number>?",
     get_fixture_info_cmd), Command::Usable::SELECTED);
 
-    m_cmdList.registerCommand(Command("highlight", "Get or set highlight", "highlight <boolean>?",
-    get_fixture_info_cmd), Command::Usable::SELECTED);
+    m_cmdList.registerCommand(Command("highlight", "Toggle highlight", "highlight",
+    [this](const std::vector<std::string>& args) {
+        m_client->run(JSONtemp::stringify("setfixture", "id", m_client->clientID(), "highlight", true));
+        return true;
+    }), Command::Usable::SELECTED);
 
     m_cmdList.registerCommand(Command("config", "Get full fixture config", "config",
     [this](const std::vector<std::string>& args) {
         return get_fixture_config(args);
-    }), Command::Usable::SELECTED);
-
-    m_cmdList.registerCommand(Command("inbytes", "Get full dmx array", "inbytes",
-    [this](const std::vector<std::string>& args) {
-        return inbytes(args);
     }), Command::Usable::SELECTED);
 
     m_cmdList.pushGroup();
@@ -245,8 +240,8 @@ bool CommandExecutor::help(const std::vector<std::string>& args) {
         auto info = m_cmdList.get(args[1]);
         if (info) {
             log.println(" Help for command {}", info.value()->name);
-            log.println(" - description: {}{}{}{}",Utils::Font::colorByRGB(100, 100, 100), Utils::Font::colorItalic, info.value()->desc, Utils::Font::colorReset);
-            log.println(" - usage: {}{}{}{}",Utils::Font::colorByRGB(100, 100, 100), Utils::Font::colorItalic, info.value()->usage, Utils::Font::colorReset);
+            log.println(" - description: {}{}{}", Theme::dim(), info.value()->desc, Theme::r());
+            log.println(" - usage: {}{}{}", Theme::dim(), info.value()->usage, Theme::r());
             return true;
         }
         log.println("Command {} does not exist", args[1]);
@@ -256,19 +251,16 @@ bool CommandExecutor::help(const std::vector<std::string>& args) {
     for (auto& group : m_cmdList.getGroups()) {
         bool found = false;
         for (auto& cmds : group.commands) {
-
-            if (cmds->isUsable(Command::Usable::ANYTIME) || cmds ->isUsable(selected? Command::Usable::SELECTED : Command::Usable::UNSELECTED)) {
+            if (cmds->isUsable(Command::Usable::ANYTIME) || cmds->isUsable(selected ? Command::Usable::SELECTED : Command::Usable::UNSELECTED)) {
                 if (!found) {
-                    log.println("{}", group.name);
+                    log.println("{}{}{}", Theme::heading(), group.name, Theme::r());
                     found = true;
                 }
-                log.println(
-                    " - {}: {}{}{}{}",
+                log.println(" - {}: {}{}{}",
                     cmds->name,
-                    Utils::Font::colorByRGB(100, 100, 100),
-                    Utils::Font::colorItalic,
+                    Theme::dim(),
                     cmds->desc,
-                    Utils::Font::colorReset
+                    Theme::r()
                 );
             }
         }
@@ -284,19 +276,41 @@ bool CommandExecutor::reboot(const std::vector<std::string>&) {
 }
 
 bool CommandExecutor::list(const std::vector<std::string>&) {
-    log.println("Fixtures online:");
-    int j = 0;
-
+    struct Entry { int id; const ClientInfo* info; };
+    std::vector<Entry> entries;
+    int idx = 0;
     for (const auto& info : m_sharedState.getClients()) {
-        Utils::Text::Stream stream;
-        stream << Utils::Font::colorBlue << info.description.name << Utils::Font::colorReset;
-        if(info.description.num_leds != 0)
-        {
-            stream << Utils::Font::colorByRGB(50,50,50) << " (" << std::to_string(info.description.num_leds) << " leds)" << Utils::Font::colorReset;
-        }
+        entries.push_back({idx++, &info});
+    }
 
-        log.print(" - {}: {} {}({}){}", j++, stream.end(), Utils::Font::colorItalic, info.ip, Utils::Font::colorReset);
-        log.println("{}{} v{}{}", Utils::Font::colorGreen, Utils::Font::colorItalic, info.version, Utils::Font::colorReset);
+    std::vector<std::pair<std::string, std::vector<Entry>>> groups;
+    std::unordered_map<std::string, size_t> ipIndex;
+    for (auto& e : entries) {
+        auto it = ipIndex.find(e.info->ip);
+        if (it == ipIndex.end()) {
+            ipIndex[e.info->ip] = groups.size();
+            groups.push_back({e.info->ip, {e}});
+        } else {
+            groups[it->second].second.push_back(e);
+        }
+    }
+
+    log.println("Devices online ({})", groups.size());
+
+    for (const auto& [ip, fixtures] : groups) {
+        auto& first = *fixtures[0].info;
+        log.println("  {}{}{}  {}v{}{}", Theme::ip(), ip, Theme::r(), Theme::ver(), first.version, Theme::r());
+
+        for (const auto& [id, info] : fixtures) {
+            log.print("    [{}] {}{}{}", id, Theme::name(), info->description.name, Theme::r());
+            if (!info->description.type.empty()) {
+                log.print("  {}{}{}", Theme::dim(), info->description.type, Theme::r());
+            }
+            if (info->description.num_leds != 0) {
+                log.print("  {}({} leds){}", Theme::dim(), info->description.num_leds, Theme::r());
+            }
+            log.println("");
+        }
     }
     return true;
 }
@@ -304,12 +318,10 @@ bool CommandExecutor::list(const std::vector<std::string>&) {
 bool CommandExecutor::all_config(const std::vector<std::string>&) {
     const auto& allclients = m_sharedState.getClients();
     for (int i = 0; i < allclients.size(); i++) {
-        // auto& client = allclients[i];
         select({std::to_string(i)});
         get_fixture_config();
         deselect();
     }
-
     return true;
 }
 
@@ -355,7 +367,6 @@ bool CommandExecutor::select(const std::vector<std::string>& args) {
     else if (args[0] == "select" && args.size() == 2 && Utils::String::isInt(args[1])) {
         i = std::stoi(args[1]);
     }
-
     else {
         return false;
     }
@@ -364,8 +375,6 @@ bool CommandExecutor::select(const std::vector<std::string>& args) {
         log.error("Index out of bounds, size: {}, index: {}", size, args[0]);
     }
     else {
-        // selectIndex(i);
-        // const auto cl = std::advance(m_sharedState.getClients().begin(), i);
         auto it = m_sharedState.getClients().begin();
         std::advance(it, i);
         const auto& cl = *it;
@@ -374,21 +383,17 @@ bool CommandExecutor::select(const std::vector<std::string>& args) {
         m_client = std::make_unique<ESPClient>(cl, m_sharedState);
     }
     return true;
-        // log.error("Required inputs: 2, given: {}", args.size());
 }
 
 bool CommandExecutor::selectName(const std::vector<std::string>& args) {
-    // auto c = m_sharedState.getClientByName(args[0]);
     selected = true;
     m_client = std::make_unique<ESPClient>(m_sharedState.getClientByName(args[0]), m_sharedState);
-
     return true;
 }
 
 bool CommandExecutor::selectIP(const std::vector<std::string>& args) {
     return true;
 }
-
 
 bool CommandExecutor::deselect(const std::vector<std::string>& args) {
     m_client.reset();
@@ -403,93 +408,71 @@ bool CommandExecutor::task_config(const std::vector<std::string>& args) {
     mapp["serialprint"] = "serial_report_task";
     mapp["wirelessprint"] = "wireless_report_task";
 
-    if (mapp.contains(cmd)) {
-        log.debug("{} exists in array", cmd);
-        if (args.size() == 2) {
-            bool val = args[1] == "true" ? true : false;
-            m_client->run(JSONtemp::stringify(mapp[cmd], "value", val), false);
-        }
-        else {
-            m_client->run(JSONtemp::stringify(mapp[cmd]), false);
-        }
-        return true;
-    }
+    if (!mapp.contains(cmd)) return false;
 
-    return false;
+    std::string resp;
+    if (args.size() == 2) {
+        bool v = args[1] == "true";
+        resp = m_client->runStr(JSONtemp::stringify(mapp[cmd], "value", v));
+    } else {
+        resp = m_client->runStr(JSONtemp::stringify(mapp[cmd]));
+    }
+    if (resp.empty()) return false;
+
+    using json = nlohmann::json;
+    json data;
+    try { data = json::parse(resp); }
+    catch (const json::parse_error& e) { log.error("JSON parse error: {}", e.what()); return false; }
+    if (data.contains("err")) { log.error("{}", data["err"].get<std::string>()); return false; }
+
+    bool current = data.value("val", false);
+    auto boolCol = current ? Theme::ok() : Theme::err();
+
+    if (args.size() == 2) {
+        log.println("{}Set {}{} to {}{}{}", Theme::lbl(), cmd, Theme::r(), boolCol, current, Theme::r());
+    } else {
+        log.println("{}{}: {}{}{}", Theme::lbl(), cmd, boolCol, current, Theme::r());
+    }
+    return true;
 }
 
 bool CommandExecutor::get_info(const std::vector<std::string>& args) {
-    std::string cmd = args[0];
-    log.debug("{} exists in array", cmd);
-    m_client->run(JSONtemp::stringify(args[0]), true);
+    m_client->run(JSONtemp::stringify(args[0]));
     return true;
 }
 
 bool CommandExecutor::presets(const std::vector<std::string>& args) {
-    auto response = m_client->runStr(JSONtemp::stringify(args[0]));
-    if (response.empty()) {
-        return false;
-    }
-
-    log.println("Listing presets: ");
-    Utils::Text::Stream streamSelected;
-    Utils::Text::Stream streamAll;
+    auto resp = m_client->runStr(JSONtemp::stringify("getfixture", "id", m_client->clientID(), "value", "presets"));
+    if (resp.empty()) return false;
 
     using nlohmann::json;
-    json respj = json::parse(response);
-    std::string respdata = respj["response"];
-    json j = json::parse(respdata);
+    json data;
+    try { data = json::parse(resp); }
+    catch (const json::parse_error& e) { log.error("JSON parse error: {}", e.what()); return false; }
+    if (data.contains("err")) { log.error("{}", data["err"].get<std::string>()); return false; }
 
-    for (const auto& preset : j["presets"]) {
-        for (auto& [key, value] : preset.items()) {
-            log.println("Fixture name: {}", key);
+    auto val = data["val"];
+    int sel = val.value("selected", -1);
+    auto& groups = val["presets"]["groups"];
 
-            int current = value.value("selected", -1);
-            if (!value.contains("presets")) continue;
+    log.println("{}Presets{} {}(selected: {}){}", Theme::heading(), Theme::r(), Theme::dim(), sel, Theme::r());
+    int i = 0;
+    for (const auto& group : groups) {
+        std::string gname = group.value("name", "unnamed");
+        bool isCurrent = (i == sel);
 
-            const auto& innerPresets = value["presets"];
-
-            if (!innerPresets.contains("groups")) continue;
-
-            const auto& groups = innerPresets["groups"];
-            uint8_t c = 0;
-            for (const auto& group : groups) {
-                std::string name = group["name"];
-
-                if (c == current) {
-                    streamSelected << Utils::String::format("[{}]: \"{}\"\n", c, name);
-                }
-                streamAll << Utils::String::format("[{}]: \"{}\"\n", c, name);
-
-                for (const auto& setting : group["settings"]) {
-
-                    std::string pretty;
-                    // {
-                    //     auto dump = setting.dump(2);
-                    //     Utils::Text::Stream stream;
-                    //     auto spl = Utils::String::split(dump, "\n");
-                    //     auto pad = Utils::String::pad(2, " ");
-                    //     for (auto t : spl) {
-                    //         stream << Utils::String::concat(pad, t, "\n");
-                    //     }
-                    //
-                    //     pretty = stream.end();
-                    // }
-                    pretty = setting.dump(2);
-
-                    if (c == current) {
-                        streamSelected << pretty << "\n";
-                    }
-                    streamAll << pretty << "\n";
-                }
-                c++;
-            }
+        if (isCurrent) {
+            log.print("  {}[{}] \"{}\"{}", Theme::ok(), i, gname, Theme::r());
+        } else {
+            log.print("  [{}] {}\"{}\"{}", i, Theme::dim(), gname, Theme::r());
         }
+
+        for (const auto& setting : group["settings"]) {
+            log.print("  {}{}{}", Theme::val(), setting.dump(), Theme::r());
+        }
+        log.println("");
+        i++;
     }
-
-    log.println("Selected preset:\n{}", streamSelected.end());
-    log.println("All presets:\n{}", streamAll.end());
-
     return true;
 }
 
@@ -513,12 +496,6 @@ struct FixtureConfig {
         presetIndex = v.value("presetIndex", -1);
         numPresets = v.value("numPresets", -1);
     }
-
-    void applyOffset(int offset)
-    {
-        address += address == -1 ? 0 : offset; 
-        presetIndex += presetIndex == -1 ? 0 : offset; 
-    }
 };
 
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(
@@ -528,70 +505,33 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(
 
 bool CommandExecutor::describe(const std::vector<std::string>& args)
 {
-    auto resp = m_client->runStr(JSONtemp::stringify(args[0]), true);
+    auto resp = m_client->runStr(JSONtemp::stringify("describe"));
+    if (resp.empty()) return false;
+
     using nlohmann::json;
-    
-    json respj = json::parse(resp);
-    std::string responseJsonStr = respj["response"];
+    json data;
+    try { data = json::parse(resp); }
+    catch (const json::parse_error& e) { log.error("JSON parse error: {}", e.what()); return false; }
+    if (data.contains("err")) { log.error("{}", data["err"].get<std::string>()); return false; }
 
-    json engineJson = json::parse(responseJsonStr);
+    log.println("{}Engine{}", Theme::heading(), Theme::r());
+    log.println("  {}version:{}       {}{}{}", Theme::lbl(), Theme::r(), Theme::val(), data.value("version", "?"), Theme::r());
+    log.println("  {}serial print:{}  {}{}{}", Theme::lbl(), Theme::r(), Theme::val(), data.value("serial_report_task", false), Theme::r());
+    log.println("  {}wifi print:{}    {}{}{}", Theme::lbl(), Theme::r(), Theme::val(), data.value("wireless_report_task", false), Theme::r());
+    log.println("  {}wifi anim:{}     {}{}{}", Theme::lbl(), Theme::r(), Theme::val(), data.value("wifi_animation", false), Theme::r());
 
+    if (data.contains("wifi"))
     {
-        json settings = engineJson["engine"]["settings"];
-        json wifi = engineJson["engine"]["wifi"];
-        std::string version = settings.value("version", "unknown");
-        std::string ssid = settings.value("ssid", "unknown");
-        std::string password = settings.value("password", "unknown");
-
-        int rssi = wifi.value("rssi", 0);
-        std::string ip = wifi.value("local_ip", "HMMM");
+        auto& wifi = data["wifi"];
         bool connected = wifi.value("connected", false);
+        auto connCol = connected ? Theme::ok() : Theme::err();
 
-        bool serial_report_task = settings.value("serial_report_task", true);
-        bool wireless_report_task = settings.value("wireless_report_task", true);
-        bool wifi_animation = settings.value("wifi_animation", true);
-
-        log.println("Engine settings:");
-        log.println(" - Version: {}", version);
-        log.println(" - Serial print enabled: {}", serial_report_task);
-        log.println(" - Wireless print enabled: {}", wireless_report_task);
-        log.println(" - Wifi animation enabled: {}", wifi_animation);
-
-        log.println("Wifi:");
-        log.println(" - SSID: '{}'", ssid);
-        log.println(" - Password: '{}'", password);
-        log.println(" - Connected: {}", connected);
-        log.println(" - IP: {}", ip);
-        log.println(" - RSSI: {}", rssi);
-    }
-
-    json fixtures = engineJson["engine"]["fixture_handler"];
-    json inputs = engineJson["engine"]["input_handler"];
-
-    log.println("Inputs:");
-    for (const auto& input : inputs["inputs"])
-    {
-        int id = input.value("id", 0);
-        log.println(" - ID: {}", id);
-
-        int universe = input.value("universe", 0);
-        std::string type = input.value("type", "unknown");
-
-        log.println("   - universe: {}", universe);
-        log.println("   - type: {}", type);
-    }
-
-    log.println("Fixtures (num = {}):", fixtures.value("num_fixtures", 1));
-    for (const auto& fixture : fixtures["fixtures"])
-    {
-        FixtureConfig cfg(fixture);
-        log.println(" - ID: {}", cfg.id);
-        log.println("   - name: '{}'", cfg.name);
-        log.println("   - type: '{}'", cfg.type);
-        log.println("   - universe: {}", cfg.universe);
-        log.println("   - address: {}", cfg.address);
-        log.println("   - selected preset: {}", cfg.presetIndex);
-        log.println("   - number of presets: {}", cfg.numPresets);
+        log.println("{}Wifi{}", Theme::heading(), Theme::r());
+        log.println("  {}connected:{}  {}{}{}", Theme::lbl(), Theme::r(), connCol, connected, Theme::r());
+        log.println("  {}ip:{}         {}{}{}", Theme::lbl(), Theme::r(), Theme::ip(), wifi.value("local_ip", "?"), Theme::r());
+        log.println("  {}rssi:{}       {}{}{}", Theme::lbl(), Theme::r(), Theme::val(), wifi.value("rssi", 0), Theme::r());
+        log.println("  {}ssid:{}       {}{}{}", Theme::lbl(), Theme::r(), Theme::val(), data.value("ssid", "?"), Theme::r());
+        log.println("  {}password:{}   {}{}{}", Theme::lbl(), Theme::r(), Theme::val(), data.value("password", "?"), Theme::r());
     }
 
     return true;
@@ -599,214 +539,161 @@ bool CommandExecutor::describe(const std::vector<std::string>& args)
 
 bool CommandExecutor::fixtures(const std::vector<std::string>& args)
 {
-    auto resp = m_client->runStr(JSONtemp::stringify(args[0]), true);
+    auto resp = m_client->runStr(JSONtemp::stringify("fixtures"));
+    if (resp.empty()) return false;
+
     using nlohmann::json;
-    
-    json respj = json::parse(resp);
-    // "response" contains a JSON string
-    std::string responseJsonStr = respj["response"];
+    json data;
+    try { data = json::parse(resp); }
+    catch (const json::parse_error& e) { log.error("JSON parse error: {}", e.what()); return false; }
+    if (data.contains("err")) { log.error("{}", data["err"].get<std::string>()); return false; }
 
-    // Parse inner JSON
-    json engineJson = json::parse(responseJsonStr);
-
-    json fixtures = engineJson["fixture_handler"];
-
-    log.println("Fixtures (num = {}):", fixtures.value("num_fixtures", 1));
-    for (const auto& fixture : fixtures["fixtures"])
+    log.println("{}Fixtures{}", Theme::heading(), Theme::r());
+    for (const auto& fixture : data["fixtures"])
     {
-        FixtureConfig cfg;
-        if(fixture.contains("config") && !fixture["config"].is_null())
-        {
-            cfg = FixtureConfig(fixture["config"]);
-        }
-        
-        log.println(" - ID: {}", cfg.id);
-        log.println(" - name: '{}'", cfg.name);
-        log.println(" - type: '{}'", cfg.type);
-        log.println(" - universe: {}", cfg.universe);
-        log.println(" - address: {}", cfg.address);
-        log.println(" - selected preset({}): '{}'", cfg.presetIndex, fixture.value("preset", "unknown"));
-        log.println(" - number of presets: {}", cfg.numPresets);
-        log.println(" - footprint: {}", fixture.value("footprint", -1));
-        if(fixture.contains("input_type"))
-        {
-            log.println(" - input type: {}", fixture.value("input_type", "unknown"));
-        }
-
-        if(!fixture.contains("outputs"))
-        {
-            return true;
-        }
-
-        log.println(" - outputs:");
-        int i = 0;
-        for (const auto& output : fixture["outputs"])
-        {
-            std::string outputType = output["type"];
-            int pin = output["hardware_pin"];
-
-            log.println("   - id: {}", i++);
-            log.println("     - type: {}", outputType);
-            log.println("     - hardware pin: {}", pin);
-        }
+        FixtureConfig cfg(fixture);
+        log.println("  [{}] {}{}{}  {}{}{}",
+            cfg.id,
+            Theme::name(), cfg.name, Theme::r(),
+            Theme::dim(), cfg.type, Theme::r());
+        log.println("      {}uni:{}  {}{}{}  {}addr:{}  {}{}{}  {}preset:{}  {}{}/{}{}",
+            Theme::lbl(), Theme::r(), Theme::val(), cfg.universe, Theme::r(),
+            Theme::lbl(), Theme::r(), Theme::val(), cfg.address, Theme::r(),
+            Theme::lbl(), Theme::r(), Theme::val(), cfg.presetIndex, cfg.numPresets, Theme::r());
     }
-
     return true;
 }
 
 bool CommandExecutor::inputs(const std::vector<std::string>& args)
 {
-    auto resp = m_client->runStr(JSONtemp::stringify(args[0]), true);
+    auto resp = m_client->runStr(JSONtemp::stringify("inputs"));
+    if (resp.empty()) return false;
+
     using nlohmann::json;
-    
-    json respj = json::parse(resp);
-    std::string responseJsonStr = respj["response"];
+    json data;
+    try { data = json::parse(resp); }
+    catch (const json::parse_error& e) { log.error("JSON parse error: {}", e.what()); return false; }
+    if (data.contains("err")) { log.error("{}", data["err"].get<std::string>()); return false; }
 
-    json engineJson = json::parse(responseJsonStr);
-    json inputs = engineJson["input_handler"];
-
-    log.println("Inputs (num = {}):", inputs.value("num_inputs", 1));
-    for (const auto& input : inputs["inputs"])
+    log.println("{}Inputs{} ({})", Theme::heading(), Theme::r(), data.value("num_inputs", 0));
+    for (const auto& input : data["inputs"])
     {
-        log.println(" - ID: {}", input.value("id", -1));
-        log.println(" - type: '{}'", input.value("type", "Unknown"));
-        log.println(" - universe: {}", input.value("universe", -1));
-        log.print(" - bytes: ");
-
-        const auto& bytes = input["9_bytes"];
-
-        for (const auto& b : bytes)
-        {
-            int value = b;
-            log.print("{} ", value);
-        }
-
-        log.println("");
+        log.println("  {}type:{}  {}{}{}  {}universe:{}  {}{}{}",
+            Theme::lbl(), Theme::r(), Theme::val(), input.value("type", "?"), Theme::r(),
+            Theme::lbl(), Theme::r(), Theme::val(), input.value("universe", 0), Theme::r());
     }
-
     return true;
 }
 
 bool CommandExecutor::inbytes(const std::vector<std::string>& args)
 {
-    std::string cmd = args[0];
-    // uint32_t id = args.size() == 2 ? std::stoi(args[1]) : 0;
-    auto resp = m_client->runStr(JSONtemp::stringify("getfixture", "id", m_client->clientID(), "value", cmd), false);
-
-    using nlohmann::json;    
-    try
-    {
-        json respj = json::parse(resp);
-        std::string responseJsonStr = respj["response"];
-        json engineJson = json::parse(responseJsonStr);
-
-        std::vector<int> values = engineJson["value"].get<std::vector<int>>();
-
-        for (int i = 0; i < 16; i++)
-        {
-            static const std::string hex = "0123456789ABCDEF";
-            log.print("  0x{}", hex[i]);
-        }
-
-        log.println("");
-        for (int i = 0; i < 16 * 5; i++)
-        {
-            log.print("-");
-        }
-        log.println("");
-
-        int i = 0;
-        for(auto& b : values)
-        {
-            if(i != 0 && i % 16 == 0)
-            {
-                log.println("");
-            }
-
-            log.print("  {:3}", b);
-            i++;
-        }
-        log.println("");
-    }
-    catch (const json::parse_error& e)
-    {
-        log.println("Inbytes not supported");
-        return false;
-    }
-    
-    return true;
+    log.error("inbytes command not supported in this firmware version");
+    return false;
 }
 
 
-
 bool CommandExecutor::get_fixture_config(const std::vector<std::string>& args) {
-    // uint32_t id = args.size() == 2 ? std::stoi(args[1]) : 0;
-    auto ret = m_client->runStr(JSONtemp::stringify("getfixture", "id", m_client->clientID(), "value", "config"), false, std::chrono::milliseconds{7000});
+    auto ret = m_client->runStr(JSONtemp::stringify("getfixture", "id", m_client->clientID(), "value", "config"));
+    if (ret.empty()) return false;
+
     using json = nlohmann::json;
-
     json data;
-    try{
-        data = json::parse(ret);
-    }
-    catch (std::exception e)
-    {
-        log.error(e.what());
-        return false;
-    }
+    try { data = json::parse(ret); }
+    catch (const json::parse_error& e) { log.error("JSON parse error: {}", e.what()); return false; }
+    if (data.contains("err")) { log.error("{}", data["err"].get<std::string>()); return false; }
 
-    json respjson = json::parse(data["response"].get<std::string>());
-    auto v = respjson["value"];
+    auto v = data["val"];
     FixtureConfig cfg(v);
 
-    // auto type = Utils::String::concat(Utils::Font::colorItalic, Utils::Font::colorByRGB(20,20,100), "[", cfg.type, "]", Utils::Font::colorReset);
-    log.print(" - {}{}{}:", Utils::Font::colorBlue, cfg.name, Utils::Font::colorReset);
-    log.print(" uni {}, addr {}, preset {} out of {}", cfg.universe, cfg.address, cfg.presetIndex, cfg.numPresets);
-    // log.println(" - number of presets: {}", cfg.numPresets);
-    auto nleds = m_client->getClientInfo().description.num_leds;
-    if(nleds != 0)
+    log.println("{}{}{}  {}{}{}",
+        Theme::name(), cfg.name, Theme::r(),
+        Theme::dim(), cfg.type, Theme::r());
+
+    log.println("  {}universe: {}{}{}  {}address: {}{}{}  {}preset: {}{}/{}{}",
+        Theme::lbl(), Theme::val(), cfg.universe, Theme::r(),
+        Theme::lbl(), Theme::val(), cfg.address, Theme::r(),
+        Theme::lbl(), Theme::val(), cfg.presetIndex, cfg.numPresets, Theme::r());
+
+    if (v.contains("footprint"))
     {
-        log.print(", num leds: {}", nleds);
+        log.print("  {}footprint: {}{}{}", Theme::lbl(), Theme::val(), v["footprint"].get<int>(), Theme::r());
+    }
+
+    auto nleds = m_client->getClientInfo().description.num_leds;
+    if (nleds != 0)
+    {
+        log.print("  {}leds: {}{}{}", Theme::lbl(), Theme::val(), nleds, Theme::r());
     }
     log.println("");
+
+    if (v.contains("outputs"))
+    {
+        log.println("  {}outputs:{}", Theme::lbl(), Theme::r());
+        for (const auto& out : v["outputs"])
+        {
+            std::string otype = out.value("type", "?");
+            int pin = out.value("hardware_pin", -1);
+            int leds = out.value("num_leds", 0);
+            int groups = out.value("num_groups", 0);
+
+            log.println("    {}type: {}{}{}  {}pin: {}{}{}  {}leds: {}{}{}  {}groups: {}{}{}",
+                Theme::lbl(), Theme::val(), otype, Theme::r(),
+                Theme::lbl(), Theme::val(), pin, Theme::r(),
+                Theme::lbl(), Theme::val(), leds, Theme::r(),
+                Theme::lbl(), Theme::val(), groups, Theme::r());
+        }
+    }
     return true;
 }
 
 bool CommandExecutor::get_fixture_info(const std::vector<std::string> & args) {
     std::string cmd = args[0];
+    std::string label = cmd;
     if(cmd == "preset")
     {
         cmd = "presetIndex";
     }
 
-    log.debug("{} exists in array", cmd);
-    switch(args.size())
+    if (args.size() == 1)
     {
-        case 1:
-            m_client->run(JSONtemp::stringify("getfixture", "id", m_client->clientID(), "value", cmd), false);
-            break;
-        case 2:
-            if (cmd == "name") {
-                m_client->run(JSONtemp::stringify("setfixture", "id", m_client->clientID(), cmd, args[1]), false);
-            }
-            else if (cmd == "highlight") {
-                m_client->run(JSONtemp::stringify("setfixture", "id", m_client->clientID(), cmd, args[1] == "true" ? true : false), false);
-            }
-            else {
-                m_client->run(JSONtemp::stringify("setfixture", "id", m_client->clientID(), cmd, std::stoi(args[1])), false);
-            }
-            break;
-        // default:
-        //     return false;
-    }
+        auto resp = m_client->runStr(JSONtemp::stringify("getfixture", "id", m_client->clientID(), "value", cmd));
+        if (resp.empty()) return false;
 
+        using json = nlohmann::json;
+        json data;
+        try { data = json::parse(resp); }
+        catch (const json::parse_error& e) { log.error("JSON parse error: {}", e.what()); return false; }
+        if (data.contains("err")) { log.error("{}", data["err"].get<std::string>()); return false; }
+
+        auto v = data["val"];
+        if (v.is_string())
+            log.println("{}{}: {}{}{}", Theme::lbl(), label, Theme::val(), v.get<std::string>(), Theme::r());
+        else
+            log.println("{}{}: {}{}{}", Theme::lbl(), label, Theme::val(), v.dump(), Theme::r());
+    }
+    else
+    {
+        std::string resp;
+        if (cmd == "name") {
+            resp = m_client->runStr(JSONtemp::stringify("setfixture", "id", m_client->clientID(), cmd, args[1]));
+        } else {
+            resp = m_client->runStr(JSONtemp::stringify("setfixture", "id", m_client->clientID(), cmd, std::stoi(args[1])));
+        }
+        if (resp.empty()) return false;
+
+        using json = nlohmann::json;
+        json data;
+        try { data = json::parse(resp); }
+        catch (const json::parse_error& e) { log.error("JSON parse error: {}", e.what()); return false; }
+        if (data.contains("err")) { log.error("{}", data["err"].get<std::string>()); return false; }
+
+        log.println("{}Set {}{} to {}{}{}", Theme::lbl(), label, Theme::r(), Theme::val(), args[1], Theme::r());
+    }
     return true;
 }
 
 
 bool CommandExecutor::setwifi(const std::vector<std::string>& args) {
-    // for (auto&& arg : args) {
-    //     std::cout << arg << std::endl;
-    // }
     nlohmann::json r;
     r["request"] = "wifi";
     for (int i = 1; i < args.size(); i++) {
@@ -823,8 +710,54 @@ bool CommandExecutor::setwifi(const std::vector<std::string>& args) {
             r["ssid"] = val;
         }
     }
-    // log.println(r.dump());
-    m_client->run(r.dump()); // TODO: untested
-    return true;
-    // client->run(JSONtemp::stringify("wifi", "ssid", sp[1], "password", sp[2]));
+
+    std::string oldIp = m_client->getIP();
+    std::string clientName = m_client->getClientInfo().description.name;
+
+    log.println("{}Sending wifi config...{}", Theme::lbl(), Theme::r());
+    m_client->runStr(r.dump());
+
+    m_client.reset();
+    selected = false;
+    m_sharedState.removeClientsByIp(oldIp);
+
+    log.println("{}Waiting for '{}{}{}' to reconnect...{}", Theme::lbl(), Theme::name(), clientName, Theme::lbl(), Theme::r());
+
+    auto start = std::chrono::steady_clock::now();
+    auto timeout = std::chrono::seconds(30);
+    while (std::chrono::steady_clock::now() - start < timeout) {
+        if (m_sharedState.hasClientWithName(clientName)) {
+            auto& info = m_sharedState.getClientByName(clientName);
+            log.println("{}Reconnected at {}{}{}", Theme::ok(), Theme::ip(), info.ip, Theme::r());
+            return true;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    }
+
+    log.error("Timed out waiting for '{}' to reconnect", clientName);
+    return false;
+}
+
+bool CommandExecutor::refresh(const std::vector<std::string>&) {
+    if (m_client) {
+        m_client.reset();
+        selected = false;
+    }
+
+    m_sharedState.clearAll();
+
+    log.println("{}Cleared all clients, waiting for heartbeat...{}", Theme::lbl(), Theme::r());
+
+    auto start = std::chrono::steady_clock::now();
+    auto timeout = std::chrono::seconds(10);
+    while (std::chrono::steady_clock::now() - start < timeout) {
+        if (!m_sharedState.getClients().empty()) {
+            log.println("{}Found {} client(s){}", Theme::ok(), m_sharedState.getClients().size(), Theme::r());
+            return list();
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    }
+
+    log.error("No clients found");
+    return false;
 }

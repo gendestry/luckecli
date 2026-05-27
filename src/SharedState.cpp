@@ -46,6 +46,31 @@ void SharedState::addClient(ClientInfo client, std::string ip) {
     triggerChange();
 }
 
+void SharedState::removeClientsByIp(const std::string& ip) {
+    std::lock_guard lock(mutex);
+    if (!clients.contains(ip)) return;
+
+    clients.erase(ip);
+    clients_list.remove_if([&](const ClientInfo& c) { return c.ip == ip; });
+
+    triggerChange();
+}
+
+void SharedState::clearAll() {
+    std::lock_guard lock(mutex);
+    clients.clear();
+    clients_list.clear();
+    triggerChange();
+}
+
+bool SharedState::hasClientWithName(const std::string& name) {
+    std::lock_guard lock(mutex);
+    for (auto& c : clients_list) {
+        if (c.description.name == name) return true;
+    }
+    return false;
+}
+
 void SharedState::addResponse(const std::string& response) {
     std::lock_guard lock(mutexResponse);
     responses.push_back(response);

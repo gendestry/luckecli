@@ -44,6 +44,9 @@ public:
     SharedState(std::function<void()> onChange = [](){});
 
     void addClient(ClientInfo client, std::string ip);
+    void removeClientsByIp(const std::string& ip);
+    void clearAll();
+    bool hasClientWithName(const std::string& name);
     void addResponse(const std::string& response);
 
     const std::vector<std::string>& getResponses();

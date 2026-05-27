@@ -54,4 +54,5 @@ public:
      bool get_fixture_config(const std::vector<std::string>& = {});
 
      bool setwifi(const std::vector<std::string>&);
+     bool refresh(const std::vector<std::string>&);
 };
