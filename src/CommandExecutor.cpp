@@ -12,20 +12,16 @@
 #include <chrono>
 #include <map>
 
-CommandExecutor::CommandExecutor(SharedState& state)
-    : log("Command"), m_sharedState(state) {
+CommandExecutor::CommandExecutor(SharedState& state, Display& display)
+    : log("Command"), m_sharedState(state), m_display(display) {
     bindCommands();
 }
 
 void CommandExecutor::run() {
-    log.print("> ");
-    std::string line;
-    while (std::getline(std::cin, line)) {
-        auto resolved = resolveCommand(line);
-        if (shouldQuit()) {
-            break;
-        }
-    }
+    m_display.run([this](const std::string& line) {
+        resolveCommand(line);
+        return shouldQuit();
+    });
 }
 
 bool CommandExecutor::resolveCommand(const std::string& line) {
@@ -68,17 +64,7 @@ bool CommandExecutor::resolveCommand(const std::string& line) {
         }
     }
 
-    if (selected) {
-        auto sclient = m_client->getClientInfo();
-        log.print("{}{}{}:{}{}{}{}{} ",
-            Theme::name(), sclient.description.name, Theme::r(),
-            Theme::dim(), sclient.description.type, Theme::r(),
-            Theme::name(), "> ", Theme::r());
-    }
-    else {
-        log.print("> ");
-    }
-
+    updatePrompt();
     return result;
 }
 
@@ -227,11 +213,47 @@ void CommandExecutor::bindCommands() {
     m_cmdList.pushGroup();
 }
 
+void CommandExecutor::updatePrompt() {
+    if (selected) {
+        auto sclient = m_client->getClientInfo();
+        auto prompt = std::format("{}{}{}:{}{}{}{}{} {}",
+            Theme::name(), sclient.description.name, Theme::r(),
+            Theme::dim(), sclient.description.type, Theme::r(),
+            Theme::name(), ">", Theme::r());
+        m_display.setPrompt(prompt);
+    } else {
+        m_display.setPrompt("> ");
+    }
+}
+
+std::string CommandExecutor::getSelectedName() const {
+    return m_client ? m_client->getClientInfo().description.name : "";
+}
+
+std::string CommandExecutor::getSelectedType() const {
+    return m_client ? m_client->getClientInfo().description.type : "";
+}
+
+int CommandExecutor::getSelectedNumLeds() const {
+    return m_client ? m_client->getClientInfo().description.num_leds : 0;
+}
+
+std::string CommandExecutor::fetchFixtureConfigJson() {
+    if (!m_client) return "";
+    return m_client->runStr(JSONtemp::stringify("getfixture", "id", m_client->clientID(), "value", "config"));
+}
+
+std::string CommandExecutor::fetchDescribeJson() {
+    if (!m_client) return "";
+    return m_client->runStr(JSONtemp::stringify("describe"));
+}
+
 bool CommandExecutor::exit(const std::vector<std::string>&) {
     log.debug("Exiting");
     if (m_client) m_client.reset();
     ESPClient::stop();
     exitRequest = true;
+    m_display.quit();
     return true;
 }
 

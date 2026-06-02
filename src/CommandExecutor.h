@@ -8,10 +8,12 @@
 #include "Diary/Log.h"
 #include "CommandList.h"
 #include "SharedState.h"
+#include "Display/Display.h"
 
 class CommandExecutor {
      CommandList m_cmdList;
      SharedState& m_sharedState;
+     Display& m_display;
      Log log;
 
      std::unique_ptr<ESPClient> m_client;
@@ -19,11 +21,18 @@ class CommandExecutor {
      bool exitRequest = false;
 
      void bindCommands();
+     void updatePrompt();
 public:
-     CommandExecutor(SharedState& state);
+     CommandExecutor(SharedState& state, Display& display);
 
      bool isSelected() const { return selected; }
      bool shouldQuit() const { return exitRequest;}
+     const CommandList& getCommandList() const { return m_cmdList; }
+     std::string getSelectedName() const;
+     std::string getSelectedType() const;
+     int getSelectedNumLeds() const;
+     std::string fetchFixtureConfigJson();
+     std::string fetchDescribeJson();
 
      void run();
      bool resolveCommand(const std::string& line);
