@@ -3,6 +3,8 @@
 #include <atomic>
 #include <thread>
 #include <memory>
+#include <mutex>
+#include <condition_variable>
 #include <optional>
 
 #include "Diary/Log.h"
@@ -16,6 +18,12 @@ class ESPClient {
     static std::thread listen_thread;
     static std::atomic<bool> running;
     static SafeQueue<std::string> queue;
+
+    // Signals when the response listener is actually bound and accepting, so
+    // the first request can't race the listener's startup (dropped response).
+    static std::mutex listen_mtx;
+    static std::condition_variable listen_cv;
+    static bool listening;
 
     static bool inited;
     static void listen_ingest_udp();
@@ -33,7 +41,7 @@ public:
 
     // void sendRequest(const std::string& request);
     void run(const std::string& request, bool jsonres = false, std::chrono::milliseconds timeout = 4000ms);
-    std::string runStr(const std::string& request, bool jsonres = false, std::chrono::milliseconds timeout = 4000ms);
+    std::string runStr(const std::string& request, bool jsonres = false, std::chrono::milliseconds timeout = 4000ms, bool useCache = false);
 
     const int clientID() const
     {

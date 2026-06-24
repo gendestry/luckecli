@@ -7,17 +7,18 @@
 
 #include <memory>
 
-int main() {
+int main()
+{
     SharedState state;
 
     // auto display = std::make_unique<CLIDisplay>();
     auto display = std::make_unique<FTXUIDisplay>(state);
 
-    Log::setGlobalCallback([&display](const Loggable& l) {
-        display->onLog(l);
-    });
+    Log::setGlobalCallback([&display](const Loggable &l)
+                           { display->onLog(l); });
 
-    state.onChangeCallback = [&display]() {
+    state.onChangeCallback = [&display]()
+    {
         display->onStateChanged();
     };
 

@@ -5,6 +5,7 @@
 #pragma once
 #include <condition_variable>
 #include <mutex>
+#include <optional>
 #include <queue>
 
 template<typename T>
@@ -20,6 +21,12 @@ public:
             q.push(std::move(v));
         }
         cv.notify_one();
+    }
+
+    void clear() {
+        std::lock_guard lock(m);
+        std::queue<T> empty;
+        std::swap(q, empty);
     }
 
     std::optional<T> pop_for(std::chrono::milliseconds timeout) {

@@ -7,6 +7,7 @@
 #include <list>
 #include <string>
 #include <mutex>
+#include <optional>
 #include <vector>
 #include <memory>
 #include <unordered_map>
@@ -15,14 +16,34 @@
 
 
 struct ClientInfo {
-    struct Description {
+    struct Description 
+    {
         std::string name;
         std::string type;
-        int num_leds = 0;
+        uint8_t universe;
+        uint16_t address;
+        uint8_t preset;
+        // int num_leds = 0;
     } description;
+
+    struct Wifi {
+        bool connected = false;
+        std::string ip;
+        int rssi;
+        std::string ssid;
+        std::string password;
+    } wifi;
+
+    struct Engine {
+        std::string version = "outdated";
+        bool serial_print = false;
+        bool wifi_print = false;
+        bool wifi_animation = false;
+    } engine;
+
     int selected = 0;
-    std::string version = "outdated";
-    std::string ip;
+    
+    // std::string ip;
     // std::vector<Description>descriptions;
 };
 
@@ -37,6 +58,11 @@ class SharedState {
     std::vector<std::string> responses;
     std::mutex mutexResponse;
 
+    // In-memory response cache: ip -> (request -> raw response).
+    // Manual invalidation only: cleared by clearCache()/refresh, never expires on its own.
+    std::unordered_map<std::string, std::unordered_map<std::string, std::string>> responseCache;
+    std::mutex cacheMutex;
+
     void triggerChange();
 public:
     std::function<void()> onChangeCallback;
@@ -44,12 +70,20 @@ public:
     SharedState(std::function<void()> onChange = [](){});
 
     void addClient(ClientInfo client, std::string ip);
+    void setClientName(const std::string& ip, int selected, const std::string& name);
     void removeClientsByIp(const std::string& ip);
     void clearAll();
     bool hasClientWithName(const std::string& name);
     void addResponse(const std::string& response);
 
     const std::vector<std::string>& getResponses();
+
+    // Response cache (manual invalidation only).
+    std::optional<std::string> getCached(const std::string& ip, const std::string& request);
+    void putCache(const std::string& ip, const std::string& request, const std::string& response);
+    void clearCacheForIp(const std::string& ip);
+    void clearCache();
+
     const std::shared_ptr<ClientInfo> getClientByIp(const std::string& ip);
     // std::unique_ptr<ClientInfo> getClientByName(const std::string& name);
     const ClientInfo& getClientByName(const std::string& name);

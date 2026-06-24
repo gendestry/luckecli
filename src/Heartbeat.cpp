@@ -90,16 +90,10 @@ void Heartbeat::packet_ingest() {
             // ClientInfo::Description f;
             ClientInfo info;
             info.selected = id++;
-            info.ip = ip;
-            info.version = version;
+            info.wifi.ip = ip;
+            info.engine.version = version;
             info.description.name = item.value("name", "");
             info.description.type = item.value("type", "");
-            if(item.contains("basic"))
-            {
-                std::string b = item["basic"];
-                json bjson = json::parse(b);
-                info.description.num_leds = bjson.value("num_leds", 0);
-            }
 
             m_sharedState.addClient(std::move(info), ip);
         }

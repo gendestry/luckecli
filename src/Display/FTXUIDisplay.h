@@ -1,29 +1,19 @@
 #pragma once
 #include "Display.h"
-#include <vector>
+#include "GridView.h"
+#include "DetailView.h"
 #include <mutex>
-#include <functional>
-
-namespace ftxui { class App; }
+#include <string>
 
 class SharedState;
 class CommandExecutor;
 
+// Coordinator. Owns the grid + detail views and alternates between them in
+// run(). The thread-facing Display callbacks (onStateChanged/onLog/quit) are
+// routed to whichever view is currently active.
 class FTXUIDisplay : public Display {
-    std::string m_prompt = "> ";
-    std::vector<std::string> m_log_lines;
-    std::mutex m_mutex;
-    ftxui::App* m_app = nullptr;
-    SharedState& m_state;
-    CommandExecutor* m_exec = nullptr;
-    bool m_quit = false;
-    bool m_stateChanged = false;
-
-    void runGridView(std::function<bool(const std::string&)>& onCommand);
-    void runDetailView(std::function<bool(const std::string&)>& onCommand);
-
 public:
-    FTXUIDisplay(SharedState& state);
+    explicit FTXUIDisplay(SharedState& state);
 
     void run(std::function<bool(const std::string&)> onCommand) override;
     void setPrompt(const std::string& prompt) override;
@@ -31,4 +21,17 @@ public:
     void quit() override;
     void onStateChanged() override;
     void bindCommandSource(CommandExecutor* exec) override;
+
+private:
+    void setActive(View* v);
+
+    SharedState& m_state;
+    CommandExecutor* m_exec = nullptr;   // set via bindCommandSource()
+    GridView m_grid;
+    DetailView m_detail;
+
+    std::mutex m_routeMutex;             // guards m_active
+    View* m_active = nullptr;            // view currently running its loop
+    bool m_quit = false;
+    std::string m_prompt = "> ";
 };

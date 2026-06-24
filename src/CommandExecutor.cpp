@@ -234,18 +234,14 @@ std::string CommandExecutor::getSelectedType() const {
     return m_client ? m_client->getClientInfo().description.type : "";
 }
 
-int CommandExecutor::getSelectedNumLeds() const {
-    return m_client ? m_client->getClientInfo().description.num_leds : 0;
-}
-
 std::string CommandExecutor::fetchFixtureConfigJson() {
     if (!m_client) return "";
-    return m_client->runStr(JSONtemp::stringify("getfixture", "id", m_client->clientID(), "value", "config"));
+    return m_client->runStr(JSONtemp::stringify("getfixture", "id", m_client->clientID(), "value", "config"), false, 4000ms, true);
 }
 
 std::string CommandExecutor::fetchDescribeJson() {
     if (!m_client) return "";
-    return m_client->runStr(JSONtemp::stringify("describe"));
+    return m_client->runStr(JSONtemp::stringify("describe"), false, 4000ms, true);
 }
 
 bool CommandExecutor::exit(const std::vector<std::string>&) {
@@ -298,6 +294,8 @@ bool CommandExecutor::reboot(const std::vector<std::string>&) {
 }
 
 bool CommandExecutor::list(const std::vector<std::string>&) {
+    syncFixtureNames();
+
     struct Entry { int id; const ClientInfo* info; };
     std::vector<Entry> entries;
     int idx = 0;
@@ -308,10 +306,10 @@ bool CommandExecutor::list(const std::vector<std::string>&) {
     std::vector<std::pair<std::string, std::vector<Entry>>> groups;
     std::unordered_map<std::string, size_t> ipIndex;
     for (auto& e : entries) {
-        auto it = ipIndex.find(e.info->ip);
+        auto it = ipIndex.find(e.info->wifi.ip);
         if (it == ipIndex.end()) {
-            ipIndex[e.info->ip] = groups.size();
-            groups.push_back({e.info->ip, {e}});
+            ipIndex[e.info->wifi.ip] = groups.size();
+            groups.push_back({e.info->wifi.ip, {e}});
         } else {
             groups[it->second].second.push_back(e);
         }
@@ -321,15 +319,12 @@ bool CommandExecutor::list(const std::vector<std::string>&) {
 
     for (const auto& [ip, fixtures] : groups) {
         auto& first = *fixtures[0].info;
-        log.println("  {}{}{}  {}v{}{}", Theme::ip(), ip, Theme::r(), Theme::ver(), first.version, Theme::r());
+        log.println("  {}{}{}  {}v{}{}", Theme::ip(), ip, Theme::r(), Theme::ver(), first.engine.version, Theme::r());
 
         for (const auto& [id, info] : fixtures) {
             log.print("    [{}] {}{}{}", id, Theme::name(), info->description.name, Theme::r());
             if (!info->description.type.empty()) {
                 log.print("  {}{}{}", Theme::dim(), info->description.type, Theme::r());
-            }
-            if (info->description.num_leds != 0) {
-                log.print("  {}({} leds){}", Theme::dim(), info->description.num_leds, Theme::r());
             }
             log.println("");
         }
@@ -400,7 +395,7 @@ bool CommandExecutor::select(const std::vector<std::string>& args) {
         auto it = m_sharedState.getClients().begin();
         std::advance(it, i);
         const auto& cl = *it;
-        log.debug("Selected: {} with ip {}", i, (*it).ip);
+        log.debug("Selected: {} with ip {}", i, (*it).wifi.ip);
         selected = true;
         m_client = std::make_unique<ESPClient>(cl, m_sharedState);
     }
@@ -464,7 +459,7 @@ bool CommandExecutor::get_info(const std::vector<std::string>& args) {
 }
 
 bool CommandExecutor::presets(const std::vector<std::string>& args) {
-    auto resp = m_client->runStr(JSONtemp::stringify("getfixture", "id", m_client->clientID(), "value", "presets"));
+    auto resp = m_client->runStr(JSONtemp::stringify("getfixture", "id", m_client->clientID(), "value", "presets"), false, 4000ms, true);
     if (resp.empty()) return false;
 
     using nlohmann::json;
@@ -525,9 +520,42 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(
 )
 
 
+void CommandExecutor::syncFixtureNames() {
+    // One representative ClientInfo per not-yet-synced IP.
+    std::vector<ClientInfo> reps;
+    std::set<std::string> seen;
+    for (const auto& c : m_sharedState.getClients()) {
+        const std::string& ip = c.wifi.ip;
+        if (!seen.insert(ip).second) continue;   // already have this device
+        if (m_syncedIps.contains(ip)) continue;   // already synced
+        reps.push_back(c);
+    }
+
+    using json = nlohmann::json;
+    for (const auto& rep : reps) {
+        const std::string ip = rep.wifi.ip;
+        ESPClient client(rep, m_sharedState);
+        auto resp = client.runStr(JSONtemp::stringify("fixtures"), false, 4000ms, true);
+        if (resp.empty()) continue;   // unreachable now; retry on next call
+
+        json data;
+        try { data = json::parse(resp); }
+        catch (const json::parse_error&) { continue; }
+        if (data.contains("err") || !data.contains("fixtures")) continue;
+
+        for (const auto& fx : data["fixtures"]) {
+            FixtureConfig cfg(fx);
+            if (cfg.id >= 0 && !cfg.name.empty())
+                m_sharedState.setClientName(ip, cfg.id, cfg.name);
+        }
+        m_syncedIps.insert(ip);
+    }
+}
+
+
 bool CommandExecutor::describe(const std::vector<std::string>& args)
 {
-    auto resp = m_client->runStr(JSONtemp::stringify("describe"));
+    auto resp = m_client->runStr(JSONtemp::stringify("describe"), false, 4000ms, true);
     if (resp.empty()) return false;
 
     using nlohmann::json;
@@ -561,7 +589,7 @@ bool CommandExecutor::describe(const std::vector<std::string>& args)
 
 bool CommandExecutor::fixtures(const std::vector<std::string>& args)
 {
-    auto resp = m_client->runStr(JSONtemp::stringify("fixtures"));
+    auto resp = m_client->runStr(JSONtemp::stringify("fixtures"), false, 4000ms, true);
     if (resp.empty()) return false;
 
     using nlohmann::json;
@@ -588,7 +616,7 @@ bool CommandExecutor::fixtures(const std::vector<std::string>& args)
 
 bool CommandExecutor::inputs(const std::vector<std::string>& args)
 {
-    auto resp = m_client->runStr(JSONtemp::stringify("inputs"));
+    auto resp = m_client->runStr(JSONtemp::stringify("inputs"), false, 4000ms, true);
     if (resp.empty()) return false;
 
     using nlohmann::json;
@@ -615,7 +643,7 @@ bool CommandExecutor::inbytes(const std::vector<std::string>& args)
 
 
 bool CommandExecutor::get_fixture_config(const std::vector<std::string>& args) {
-    auto ret = m_client->runStr(JSONtemp::stringify("getfixture", "id", m_client->clientID(), "value", "config"));
+    auto ret = m_client->runStr(JSONtemp::stringify("getfixture", "id", m_client->clientID(), "value", "config"), false, 4000ms, true);
     if (ret.empty()) return false;
 
     using json = nlohmann::json;
@@ -639,12 +667,6 @@ bool CommandExecutor::get_fixture_config(const std::vector<std::string>& args) {
     if (v.contains("footprint"))
     {
         log.print("  {}footprint: {}{}{}", Theme::lbl(), Theme::val(), v["footprint"].get<int>(), Theme::r());
-    }
-
-    auto nleds = m_client->getClientInfo().description.num_leds;
-    if (nleds != 0)
-    {
-        log.print("  {}leds: {}{}{}", Theme::lbl(), Theme::val(), nleds, Theme::r());
     }
     log.println("");
 
@@ -678,7 +700,7 @@ bool CommandExecutor::get_fixture_info(const std::vector<std::string> & args) {
 
     if (args.size() == 1)
     {
-        auto resp = m_client->runStr(JSONtemp::stringify("getfixture", "id", m_client->clientID(), "value", cmd));
+        auto resp = m_client->runStr(JSONtemp::stringify("getfixture", "id", m_client->clientID(), "value", cmd), false, 4000ms, true);
         if (resp.empty()) return false;
 
         using json = nlohmann::json;
@@ -708,6 +730,12 @@ bool CommandExecutor::get_fixture_info(const std::vector<std::string> & args) {
         try { data = json::parse(resp); }
         catch (const json::parse_error& e) { log.error("JSON parse error: {}", e.what()); return false; }
         if (data.contains("err")) { log.error("{}", data["err"].get<std::string>()); return false; }
+
+        // Optimistically reflect a rename in the grid/header right away; the
+        // heartbeat-advertised name may not track setfixture on this firmware.
+        if (cmd == "name") {
+            m_sharedState.setClientName(m_client->getIP(), m_client->clientID(), args[1]);
+        }
 
         log.println("{}Set {}{} to {}{}{}", Theme::lbl(), label, Theme::r(), Theme::val(), args[1], Theme::r());
     }
@@ -742,6 +770,7 @@ bool CommandExecutor::setwifi(const std::vector<std::string>& args) {
     m_client.reset();
     selected = false;
     m_sharedState.removeClientsByIp(oldIp);
+    m_syncedIps.erase(oldIp);
 
     log.println("{}Waiting for '{}{}{}' to reconnect...{}", Theme::lbl(), Theme::name(), clientName, Theme::lbl(), Theme::r());
 
@@ -750,7 +779,7 @@ bool CommandExecutor::setwifi(const std::vector<std::string>& args) {
     while (std::chrono::steady_clock::now() - start < timeout) {
         if (m_sharedState.hasClientWithName(clientName)) {
             auto& info = m_sharedState.getClientByName(clientName);
-            log.println("{}Reconnected at {}{}{}", Theme::ok(), Theme::ip(), info.ip, Theme::r());
+            log.println("{}Reconnected at {}{}{}", Theme::ok(), Theme::ip(), info.wifi.ip, Theme::r());
             return true;
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
@@ -767,6 +796,7 @@ bool CommandExecutor::refresh(const std::vector<std::string>&) {
     }
 
     m_sharedState.clearAll();
+    m_syncedIps.clear();
 
     log.println("{}Cleared all clients, waiting for heartbeat...{}", Theme::lbl(), Theme::r());
 

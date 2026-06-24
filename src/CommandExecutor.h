@@ -3,6 +3,7 @@
 //
 #pragma once
 #include <memory>
+#include <set>
 #include "ESPClient.h"
 
 #include "Diary/Log.h"
@@ -20,17 +21,25 @@ class CommandExecutor {
      bool selected = false;
      bool exitRequest = false;
 
+     // IPs whose live fixture names have already been fetched, so the
+     // per-device `fixtures` query in syncFixtureNames() runs only once.
+     std::set<std::string> m_syncedIps;
+
      void bindCommands();
      void updatePrompt();
 public:
      CommandExecutor(SharedState& state, Display& display);
+
+     // Fetch real fixture names from each (not-yet-synced) device and write
+     // them into SharedState, so the list/grid/prompt don't show stale
+     // heartbeat names. Safe to call before rendering; no-ops once synced.
+     void syncFixtureNames();
 
      bool isSelected() const { return selected; }
      bool shouldQuit() const { return exitRequest;}
      const CommandList& getCommandList() const { return m_cmdList; }
      std::string getSelectedName() const;
      std::string getSelectedType() const;
-     int getSelectedNumLeds() const;
      std::string fetchFixtureConfigJson();
      std::string fetchDescribeJson();
 

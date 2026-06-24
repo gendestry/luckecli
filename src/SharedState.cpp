@@ -21,29 +21,66 @@ void SharedState::triggerChange() {
 }
 
 void SharedState::addClient(ClientInfo client, std::string ip) {
-    std::lock_guard lock(mutex);
-    if (clients.contains(ip)) {
-        auto& vec = clients[ip];
-        if(vec.size() > client.selected)
-        {
-            auto& m = clients[ip][client.selected];
-            m.get().description = std::move(client.description);
+    bool changed = false;
+    {
+        std::lock_guard lock(mutex);
+        if (clients.contains(ip)) {
+            auto& vec = clients[ip];
+            if(vec.size() > client.selected)
+            {
+                // Known fixture: only update (and notify) if the heartbeat data
+                // actually changed. Identical repeat heartbeats are ignored so
+                // the grid view doesn't flicker by rebuilding on every packet;
+                // a genuine change (e.g. a renamed fixture) still propagates.
+                auto& existing = vec[client.selected].get().description;
+                if (existing.name != client.description.name ||
+                    existing.type != client.description.type)
+                {
+                    existing.name = std::move(client.description.name);
+                    existing.type = std::move(client.description.type);
+                    changed = true;
+                }
+            }
+            else
+            {
+                clients_list.push_back(std::move(client));
+                clients[ip].push_back(clients_list.back());
+                changed = true;
+            }
         }
-        else
-        {
+        else {
             clients_list.push_back(std::move(client));
-            clients[ip].push_back(clients_list.back());        
+            clients[ip].push_back(clients_list.back());
+            // clients[ip] = std::make_shared<ClientInfo>(std::move(client));
+            // clients_list.push_back(clients[ip]);
+            log.debug("Added new client at ip: {}", ip);
+            changed = true;
         }
-    }
-    else {
-        clients_list.push_back(std::move(client));
-        clients[ip].push_back(clients_list.back());
-        // clients[ip] = std::make_shared<ClientInfo>(std::move(client));
-        // clients_list.push_back(clients[ip]);
-        log.debug("Added new client at ip: {}", ip);
     }
 
-    triggerChange();
+    // Only notify when something actually changed (new device/fixture or
+    // updated heartbeat data).
+    if (changed)
+        triggerChange();
+}
+
+void SharedState::setClientName(const std::string& ip, int selected, const std::string& name) {
+    bool changed = false;
+    {
+        std::lock_guard lock(mutex);
+        auto it = clients.find(ip);
+        if (it != clients.end() && selected >= 0 && selected < (int)it->second.size()) {
+            auto& desc = it->second[selected].get().description;
+            if (desc.name != name) {
+                desc.name = name;
+                changed = true;
+            }
+        }
+    }
+    // Reflect the rename in the grid/header without waiting for a heartbeat
+    // (which on this firmware may keep advertising the old name).
+    if (changed)
+        triggerChange();
 }
 
 void SharedState::removeClientsByIp(const std::string& ip) {
@@ -51,7 +88,8 @@ void SharedState::removeClientsByIp(const std::string& ip) {
     if (!clients.contains(ip)) return;
 
     clients.erase(ip);
-    clients_list.remove_if([&](const ClientInfo& c) { return c.ip == ip; });
+    clients_list.remove_if([&](const ClientInfo& c) { return c.wifi.ip == ip; });
+    clearCacheForIp(ip);
 
     triggerChange();
 }
@@ -60,6 +98,7 @@ void SharedState::clearAll() {
     std::lock_guard lock(mutex);
     clients.clear();
     clients_list.clear();
+    clearCache();
     triggerChange();
 }
 
@@ -81,6 +120,30 @@ void SharedState::addResponse(const std::string& response) {
 const std::vector<std::string>& SharedState::getResponses() {
     std::lock_guard lock(mutexResponse);
     return responses;
+}
+
+std::optional<std::string> SharedState::getCached(const std::string& ip, const std::string& request) {
+    std::lock_guard lock(cacheMutex);
+    auto ipIt = responseCache.find(ip);
+    if (ipIt == responseCache.end()) return std::nullopt;
+    auto reqIt = ipIt->second.find(request);
+    if (reqIt == ipIt->second.end()) return std::nullopt;
+    return reqIt->second;
+}
+
+void SharedState::putCache(const std::string& ip, const std::string& request, const std::string& response) {
+    std::lock_guard lock(cacheMutex);
+    responseCache[ip][request] = response;
+}
+
+void SharedState::clearCacheForIp(const std::string& ip) {
+    std::lock_guard lock(cacheMutex);
+    responseCache.erase(ip);
+}
+
+void SharedState::clearCache() {
+    std::lock_guard lock(cacheMutex);
+    responseCache.clear();
 }
 
 // const std::shared_ptr<ClientInfo> SharedState::getClientByIp(const std::string& ip) {
