@@ -1,32 +1,42 @@
-#include "CommandExecutor.h"
-#include "SharedState.h"
-#include "Heartbeat.h"
-#include "Diary/Log.h"
-#include "Display/CLIDisplay.h"
-#include "Display/FTXUIDisplay.h"
+// #include "Commands/CommandExecutor.h"
+#include "Test/SharedState.h"
+#include "Test/Heartbeat.h"
+// #include "Diary/Log.h"
+// #include "Display/CLIDisplay.h"
+// #include "Display/FTXUIDisplay.h"
 
-#include <memory>
+// #include <memory>
 
 int main()
 {
-    SharedState state;
+    Test::SharedState state;
 
     // auto display = std::make_unique<CLIDisplay>();
-    auto display = std::make_unique<FTXUIDisplay>(state);
+    // auto display = std::make_unique<FTXUIDisplay>(state);
 
-    Log::setGlobalCallback([&display](const Loggable &l)
-                           { display->onLog(l); });
+    // Log::setGlobalCallback([&display](const Loggable &l)
+    //                        { display->onLog(l); });
 
-    state.onChangeCallback = [&display]()
+    // state.onChangeCallback = [&display]()
+    // {
+    //     display->onStateChanged();
+    // };
+
+    Test::Heartbeat heartbeat(state);
+    int counter = 0;
+    while (true)
     {
-        display->onStateChanged();
-    };
+        counter++;
+        if (counter == 100)
+        {
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+    // CommandExecutor exec(state, *display);
+    // display->bindCommandSource(&exec);
 
-    Heartbeat heartbeat(state);
-    CommandExecutor exec(state, *display);
-    display->bindCommandSource(&exec);
-
-    exec.run();
+    // exec.run();
 
     return 0;
 }
