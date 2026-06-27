@@ -1,71 +1,51 @@
 #pragma once
 #include <string>
-#include <atomic>
-#include <thread>
-#include <memory>
-#include <mutex>
-#include <condition_variable>
 #include <optional>
 
 #include "Diary/Log.h"
-#include "SafeQueue.h"
+#include "Test/Utils/SafeQueue.h"
 #include "SharedState.h"
 
 using namespace std::chrono_literals;
 
-namespace Test::Network
+namespace Test
 {
 
-    class Connection
+    class ESPClient
     {
         Log logger;
-        std::thread listen_thread;
-        std::atomic<bool> running;
-        // static SafeQueue<std::string> queue;
 
-        // // Signals when the response listener is actually bound and accepting, so
-        // // the first request can't race the listener's startup (dropped response).
-        std::mutex listen_mtx;
-        std::condition_variable listen_cv;
-        bool listening;
+        SharedState &m_sharedState;
+        const Client &clientInfo;
 
-        // static bool inited;
-        // static void listen_ingest_udp();
-        void listen_ingest_tcp();
-
-        // SharedState& m_sharedState;
-        // const ClientInfo& clientInfo;
-
-        // std::optional<std::string> sendRequestOpt(const std::string& request, std::chrono::milliseconds timeout);
     public:
-        Connection(const std::string &ip);
-
-        std::optional<std::string> Connection::sendRequestOpt(const std::string &request, std::chrono::milliseconds timeout);
-        // ESPClient(const ClientInfo& cinfo, SharedState& state);
-        // ~ESPClient();
+        ESPClient(const Client &cinfo, SharedState &state);
+        ~ESPClient();
 
         // static void stop();
+        std::optional<std::string> sendRequestOpt(const std::string &request, std::chrono::milliseconds timeout);
 
-        // // void sendRequest(const std::string& request);
-        // void run(const std::string& request, bool jsonres = false, std::chrono::milliseconds timeout = 4000ms);
-        // std::string runStr(const std::string& request, bool jsonres = false, std::chrono::milliseconds timeout = 4000ms, bool useCache = false);
+        // void sendRequest(const std::string& request);
+        // void run(const std::string &request, bool jsonres = false, std::chrono::milliseconds timeout = 4000ms);
+        // std::string runStr(const std::string &request, bool jsonres = false, std::chrono::milliseconds timeout = 4000ms, bool useCache = false);
 
         // const int clientID() const
         // {
         //     return clientInfo.selected;
         // }
 
-        // const ClientInfo& getClientInfo() const
+        // const ClientInfo &getClientInfo() const
         // {
         //     return clientInfo;
         // }
 
-        // const std::string& getIP() const {
-        //     return ip_;
-        // }
+        const std::string &getIP() const
+        {
+            return ip_;
+        }
 
     private:
-        std::string m_ip;
+        std::string ip_;
     };
 
     //

@@ -13,7 +13,9 @@
 #include <unordered_map>
 #include <thread>
 #include <atomic>
+
 #include "Client.h"
+#include "Test/Utils/SafeQueue.h"
 
 #include "Diary/Log.h"
 
@@ -25,6 +27,9 @@ namespace Test
         Log log;
         std::unordered_map<std::string, Client> clients;
         std::mutex mutex;
+        std::mutex queueMutex;
+
+        Utils::SafeQueue queue;
 
         // std::list<Client> clients_list;
 
@@ -48,6 +53,18 @@ namespace Test
         bool isNewClient(const std::string &ip);
         void addClient(Client &&client, const std::string &ip);
         void updateClientPing(const std::string &ip);
+
+        Client &getClient(const std::string &ip)
+        {
+            std::lock_guard lock(mutex);
+            return clients[ip];
+        }
+
+        Utils::SafeQueue &getQueue()
+        {
+            std::lock_guard lock(queueMutex);
+            return queue;
+        };
 
         // void addClient(ClientInfo client, std::string ip);
         // void setClientName(const std::string& ip, int selected, const std::string& name);

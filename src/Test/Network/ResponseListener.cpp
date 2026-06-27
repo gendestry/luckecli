@@ -14,16 +14,15 @@
 
 namespace Test::Network
 {
-    std::thread ResponseListener::listen_thread;
-    std::atomic<bool> ResponseListener::running = true;
-    std::mutex ResponseListener::listen_mtx;
-    std::condition_variable ResponseListener::listen_cv;
-    bool ResponseListener::listening = false;
-    bool ResponseListener::inited = false;
-    Utils::SafeQueue<std::string> ResponseListener::queue;
+    // std::thread ResponseListener::listen_thread;
+    // std::atomic<bool> ResponseListener::running = true;
+    // std::mutex ResponseListener::listen_mtx;
+    // std::condition_variable ResponseListener::listen_cv;
+    // bool ResponseListener::listening = false;
+    // bool ResponseListener::inited = false;
 
-    ResponseListener::ResponseListener()
-        : logger("CONFIG")
+    ResponseListener::ResponseListener(Test::SharedState &state)
+        : logger("CONFIG"), m_sharedState(state)
     {
         if (!inited)
         {
@@ -34,7 +33,7 @@ namespace Test::Network
         // Don't issue any request until the listener is accepting, otherwise the
         // device's response connection can be refused before we're ready to receive.
         std::unique_lock lock(listen_mtx);
-        listen_cv.wait_for(lock, 2000ms, []
+        listen_cv.wait_for(lock, 2000ms, [&]
                            { return listening; });
     }
 
@@ -150,6 +149,7 @@ namespace Test::Network
 
             char ipbuf[INET_ADDRSTRLEN];
             inet_ntop(AF_INET, &clientAddr.sin_addr, ipbuf, sizeof(ipbuf));
+            std::string ip(ipbuf);
 
             // Guard against a device that sends the response but doesn't close the
             // connection: if no data arrives for a bit, treat the message as done.
@@ -178,7 +178,7 @@ namespace Test::Network
             }
 
             if (!message.empty())
-                queue.push(std::move(message));
+                m_sharedState.getQueue().push(ip, std::move(message));
 
             close(clientSock);
         }

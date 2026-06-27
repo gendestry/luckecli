@@ -8,7 +8,6 @@
 #include <optional>
 
 #include "Diary/Log.h"
-#include "Test/Utils/SafeQueue.h"
 #include "Test/SharedState.h"
 
 using namespace std::chrono_literals;
@@ -19,27 +18,26 @@ namespace Test::Network
     class ResponseListener
     {
         Log logger;
-        static std::thread listen_thread;
-        static std::atomic<bool> running;
-        static Utils::SafeQueue<std::string> queue;
+        std::thread listen_thread;
+        std::atomic<bool> running{true};
 
         // Signals when the response listener is actually bound and accepting, so
         // the first request can't race the listener's startup (dropped response).
-        static std::mutex listen_mtx;
-        static std::condition_variable listen_cv;
-        static bool listening;
+        std::mutex listen_mtx;
+        std::condition_variable listen_cv;
+        bool listening;
 
-        static bool inited;
-        static void listen_ingest_udp();
-        static void listen_ingest_tcp();
+        bool inited;
+        void listen_ingest_udp();
+        void listen_ingest_tcp();
 
-        // SharedState &m_sharedState;
+        Test::SharedState &m_sharedState;
 
     public:
-        ResponseListener();
+        ResponseListener(Test::SharedState &state);
         ~ResponseListener();
 
-        static void stop();
+        void stop();
 
     private:
     };

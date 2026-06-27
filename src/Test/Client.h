@@ -18,11 +18,17 @@ namespace Test
         struct Engine
         {
             std::string version;
+            bool serial_report;
+            bool wireless_report;
         };
 
         struct Wifi
         {
+            bool connected = false;
             std::string ip;
+            int rssi;
+            std::string ssid;
+            std::string password;
         };
 
         struct Fixture
