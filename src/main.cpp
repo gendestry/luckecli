@@ -5,6 +5,7 @@
 #include "Test/Network/ResponseListener.h"
 #include "JSONtemp.h"
 #include <iostream>
+#include <memory>
 #include <thread>
 #include <chrono>
 #include <nlohmann/json.hpp>
@@ -35,60 +36,70 @@ int main()
     Test::Network::ResponseListener listener(state);
     std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 
-    Test::ESPClient client(state.getClient("192.168.0.143"), state);
-    auto response = client.sendRequestOpt(JSONtemp::stringify("describe"), 4000ms);
-
-    if (response.has_value())
-    {
-        auto resp = response.value();
-        std::cout << resp << std::endl;
-        if (resp.empty())
-            return false;
-
-        using nlohmann::json;
-        json data;
-        try
+    std::shared_ptr<Test::ESPClient> client = std::make_shared<Test::ESPClient>(state.getClient("192.168.0.140"), state);
+    client->sendRequestAsync(JSONtemp::stringify("describe"), 4000ms, [&log](std::optional<std::string> resp)
+                             {
+        if(resp)
         {
-            data = json::parse(resp);
+            log.println("{}", resp.value());
         }
-        catch (const json::parse_error &e)
+        else
         {
-            log.error("JSON parse error: {}", e.what());
-            return false;
-        }
-        if (data.contains("err"))
-        {
-            log.error("{}", data["err"].get<std::string>());
-            return false;
-        }
+            log.error("No response");
+        } });
+    // auto response = client.sendRequestOpt(JSONtemp::stringify("describe"), 4000ms);
 
-        std::cout << data.flatten() << std::endl;
+    // if (response.has_value())
+    // {
+    //     auto resp = response.value();
+    //     std::cout << resp << std::endl;
+    //     if (resp.empty())
+    //         return false;
 
-        Test::Client client;
-        client.engine.version = data.value("version", "?");
-        client.engine.serial_report = data.value("serial_report_task", false);
-        client.engine.wireless_report = data.value("wireless_report_task", false);
-        // client.engine.data.value("wifi_animation", false);
+    //     using nlohmann::json;
+    //     json data;
+    //     try
+    //     {
+    //         data = json::parse(resp);
+    //     }
+    //     catch (const json::parse_error &e)
+    //     {
+    //         log.error("JSON parse error: {}", e.what());
+    //         return false;
+    //     }
+    //     if (data.contains("err"))
+    //     {
+    //         log.error("{}", data["err"].get<std::string>());
+    //         return false;
+    //     }
 
-        // log.println("{}Engine{}", Theme::heading(), Theme::r());
-        // log.println("  {}version:{}       {}{}{}", Theme::lbl(), Theme::r(), Theme::val(), data.value("version", "?"), Theme::r());
-        // log.println("  {}serial print:{}  {}{}{}", Theme::lbl(), Theme::r(), Theme::val(), data.value("serial_report_task", false), Theme::r());
-        // log.println("  {}wifi print:{}    {}{}{}", Theme::lbl(), Theme::r(), Theme::val(), data.value("wireless_report_task", false), Theme::r());
-        // log.println("  {}wifi anim:{}     {}{}{}", Theme::lbl(), Theme::r(), Theme::val(), data.value("wifi_animation", false), Theme::r());
+    //     std::cout << data.flatten() << std::endl;
 
-        if (data.contains("wifi"))
-        {
-            auto &wifi = data["wifi"];
-            client.wifi.connected = wifi.value("connected", false);
-            client.wifi.ip = wifi.value("local_ip", "?");
-            client.wifi.rssi = wifi.value("rssi", 0);
+    //     Test::Client client;
+    //     client.engine.version = data.value("version", "?");
+    //     client.engine.serial_report = data.value("serial_report_task", false);
+    //     client.engine.wireless_report = data.value("wireless_report_task", false);
+    //     // client.engine.data.value("wifi_animation", false);
 
-            client.wifi.ssid = data.value("ssid", "?");
-            client.wifi.password = data.value("password", "?");
-        }
+    //     // log.println("{}Engine{}", Theme::heading(), Theme::r());
+    //     // log.println("  {}version:{}       {}{}{}", Theme::lbl(), Theme::r(), Theme::val(), data.value("version", "?"), Theme::r());
+    //     // log.println("  {}serial print:{}  {}{}{}", Theme::lbl(), Theme::r(), Theme::val(), data.value("serial_report_task", false), Theme::r());
+    //     // log.println("  {}wifi print:{}    {}{}{}", Theme::lbl(), Theme::r(), Theme::val(), data.value("wireless_report_task", false), Theme::r());
+    //     // log.println("  {}wifi anim:{}     {}{}{}", Theme::lbl(), Theme::r(), Theme::val(), data.value("wifi_animation", false), Theme::r());
 
-        int a = 0;
-    }
+    //     if (data.contains("wifi"))
+    //     {
+    //         auto &wifi = data["wifi"];
+    //         client.wifi.connected = wifi.value("connected", false);
+    //         client.wifi.ip = wifi.value("local_ip", "?");
+    //         client.wifi.rssi = wifi.value("rssi", 0);
+
+    //         client.wifi.ssid = data.value("ssid", "?");
+    //         client.wifi.password = data.value("password", "?");
+    //     }
+
+    //     int a = 0;
+    // }
 
     int counter = 0;
     while (true)

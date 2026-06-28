@@ -27,6 +27,10 @@ namespace Test
         void start();
         void packet_ingest();
 
+        // Fire an async "describe" at a freshly-added client and fold the reply
+        // back into its state when it arrives (off the ingest thread).
+        void requestDescribe(const std::string &ip);
+
     public:
         Heartbeat(Test::SharedState &state);
         ~Heartbeat();

@@ -8,6 +8,7 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <unistd.h>
+#include <thread>
 #include "Utils/Logging/Logger.h"
 #include <nlohmann/json.hpp>
 
@@ -62,6 +63,17 @@ namespace Test
         auto response = m_sharedState.getQueue().pop_for(ip_, timeout);
         close(sock);
         return response;
+    }
+
+    void ESPClient::sendRequestAsync(const std::string &req, std::chrono::milliseconds timeout, ResponseHandler onResponse)
+    {
+        auto self = shared_from_this();
+        std::thread([self, req, timeout, onResponse = std::move(onResponse)]()
+                    {
+                        auto resp = self->sendRequestOpt(req, timeout); // blocks on this thread only
+                        if (onResponse)
+                            onResponse(std::move(resp)); })
+            .detach();
     }
 
     // void ESPClient::run(const std::string &request, bool jsonres, std::chrono::milliseconds timeout)

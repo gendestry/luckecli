@@ -60,6 +60,18 @@ namespace Test
             return clients[ip];
         }
 
+        // Run `fn` against the client for `ip` while holding the lock, so async
+        // updates (e.g. a describe response arriving on a worker thread) can
+        // mutate it without racing the heartbeat thread. No-op if ip is unknown.
+        template <typename F>
+        void withClient(const std::string &ip, F &&fn)
+        {
+            std::lock_guard lock(mutex);
+            auto it = clients.find(ip);
+            if (it != clients.end())
+                fn(it->second);
+        }
+
         Utils::SafeQueue &getQueue()
         {
             std::lock_guard lock(queueMutex);

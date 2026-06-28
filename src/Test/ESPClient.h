@@ -1,6 +1,9 @@
 #pragma once
 #include <string>
 #include <optional>
+#include <future>
+#include <functional>
+#include <memory>
 
 #include "Diary/Log.h"
 #include "Test/Utils/SafeQueue.h"
@@ -11,7 +14,7 @@ using namespace std::chrono_literals;
 namespace Test
 {
 
-    class ESPClient
+    class ESPClient : public std::enable_shared_from_this<ESPClient>
     {
         Log logger;
 
@@ -24,6 +27,13 @@ namespace Test
 
         // static void stop();
         std::optional<std::string> sendRequestOpt(const std::string &request, std::chrono::milliseconds timeout);
+
+        // Fire-and-forget: runs the (blocking) request on a detached thread and
+        // invokes onResponse with the reply (nullopt on failure). shared_from_this
+        // keeps this object alive until the worker finishes, so the caller can
+        // forget it. Requires the ESPClient to be owned by a std::shared_ptr.
+        using ResponseHandler = std::function<void(std::optional<std::string>)>;
+        void sendRequestAsync(const std::string &req, std::chrono::milliseconds timeout, ResponseHandler onResponse);
 
         // void sendRequest(const std::string& request);
         // void run(const std::string &request, bool jsonres = false, std::chrono::milliseconds timeout = 4000ms);

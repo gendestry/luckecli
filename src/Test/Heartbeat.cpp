@@ -3,8 +3,11 @@
 //
 
 #include "Heartbeat.h"
+#include "ESPClient.h"
+#include "JSONtemp.h"
 
 #include <cstring>
+#include <memory>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -114,6 +117,7 @@ namespace Test
                 }
 
                 m_sharedState.addClient(std::move(client), ip);
+                // requestDescribe(ip);
             }
             else
             {
@@ -124,6 +128,41 @@ namespace Test
         }
 
         close(sock);
+    }
+
+    void Heartbeat::requestDescribe(const std::string &ip)
+    {
+        auto client = std::make_shared<ESPClient>(m_sharedState.getClient(ip), m_sharedState);
+        client->sendRequestAsync(JSONtemp::stringify("describe"), 4000ms,
+                                 [this, ip](std::optional<std::string> resp)
+                                 {
+                                     if (!resp)
+                                     {
+                                         logger.error("describe {} failed", ip);
+                                         return;
+                                     }
+
+                                     using json = nlohmann::json;
+                                     try
+                                     {
+                                         json data = json::parse(*resp);
+                                         m_sharedState.withClient(ip, [&](Client &c)
+                                                                  {
+                                             c.engine.version         = data.value("version", c.engine.version);
+                                             c.engine.serial_report   = data.value("serial_report_task", false);
+                                             c.engine.wireless_report = data.value("wireless_report_task", false);
+                                             if (data.contains("wifi"))
+                                             {
+                                                 auto &w = data["wifi"];
+                                                 c.wifi.connected = w.value("connected", false);
+                                                 c.wifi.rssi      = w.value("rssi", 0);
+                                             } });
+                                     }
+                                     catch (const json::parse_error &e)
+                                     {
+                                         logger.error("describe parse: {}", e.what());
+                                     }
+                                 });
     }
 
 }

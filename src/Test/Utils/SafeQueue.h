@@ -26,7 +26,7 @@ namespace Test::Utils
                 std::lock_guard lock(m);
                 q[ip].push(std::move(resp));
             }
-            cv.notify_one();
+            cv.notify_all();
         }
 
         void clear(const std::string &ip)
