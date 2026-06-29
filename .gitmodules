@@ -7,3 +7,6 @@
 [submodule "lib/FTXUI"]
 	path = lib/FTXUI
 	url = git@github.com:ArthurSonzogni/FTXUI.git
+[submodule "lib/libMVRgdtf"]
+	path = lib/libMVRgdtf
+	url = https://github.com/mvrdevelopment/libMVRgdtf

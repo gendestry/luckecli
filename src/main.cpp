@@ -35,6 +35,7 @@ int main(int argc, char **argv)
     Test::SharedState state;
     Log log("main");
 
+    // auto display = Test::makeDisplay(Test::DisplayType::CLI, state);
     auto display = Test::makeDisplay(pickDisplay(argc, argv), state);
 
     // Route all log output to the chosen display.

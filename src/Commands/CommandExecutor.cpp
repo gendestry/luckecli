@@ -7,8 +7,10 @@
 #include "Display/Display.h"
 
 #include <algorithm>
+#include <chrono>
 #include <format>
 #include <optional>
+#include <thread>
 #include <nlohmann/json.hpp>
 
 namespace Test::Commands
@@ -125,6 +127,11 @@ namespace Test::Commands
                        Command::Usable::SELECTED,
                        [this](const Args &a)
                        { return presets(a); });
+
+        m_registry.add("outputs", "Print the outputs JSON for the selected fixture(s)", "outputs",
+                       Command::Usable::SELECTED,
+                       [this](const Args &a)
+                       { return outputs(a); });
 
         m_registry.group("Device");
 
@@ -333,7 +340,14 @@ namespace Test::Commands
     bool CommandExecutor::setpreset(const Args &args)
     {
         // Firmware field is "presetIndex"; the command is the friendlier "setpreset".
-        return setFixtureField(args, "setpreset", "presetIndex", &Client::Fixture::presetIndex);
+        if (!setFixtureField(args, "setpreset", "presetIndex", &Client::Fixture::presetIndex))
+            return false;
+
+        // The new preset changes the fixture's channel footprint (computed by the
+        // device), so re-describe to pull the updated footprint into the cache.
+        // setFixtureField guarantees a single selection on success.
+        refreshDevice(m_selection.front().ip);
+        return true;
     }
 
     bool CommandExecutor::setname(const Args &args)
@@ -553,41 +567,72 @@ namespace Test::Commands
         // are selected.
         for (const auto &ip : selectedIps())
         {
-            if (!force)
-            {
-                m_sharedState.withClient(ip, [&](Client &c)
-                                         { log.println("{}{}{}\n{}", Theme::ip(), ip, Theme::r(), c.toString()); });
+            // `describe -r` re-fetches first; plain `describe` prints the cache.
+            if (force && !refreshDevice(ip))
                 continue;
-            }
 
-            auto client = m_sharedState.getESPClient(ip);
-            auto resp = client->sendRequestOpt(Utils::JSONtemp::stringify("describe"), 4000ms);
-            if (!resp)
-            {
-                log.error("No response from {}", ip);
-                continue;
-            }
-
-            // Parse, then fetch presets off-lock (fetchPresets does network I/O),
-            // seeding from the cached client, then commit the result under the lock.
-            // Dispatches on engine version (v0.96 vs v0.98 differ).
-            Client parsed;
             m_sharedState.withClient(ip, [&](Client &c)
-                                     { parsed = c; });
-            if (!Backwards::Execute::describe(resp, parsed))
-            {
-                log.error("Could not parse describe from {}", ip);
-                continue;
-            }
-            Backwards::Execute::fetchPresets(parsed, *client);
-
-            std::string summary;
-            m_sharedState.withClient(ip, [&](Client &c)
-                                     {
-                c = std::move(parsed);
-                summary = c.toString(); });
-            log.println("{}{}{}\n{}", Theme::ip(), ip, Theme::r(), summary);
+                                     { log.println("{}{}{}\n{}", Theme::ip(), ip, Theme::r(), c.toString()); });
         }
+        return true;
+    }
+
+    bool CommandExecutor::refreshDevice(const std::string &ip)
+    {
+        auto client = m_sharedState.getESPClient(ip);
+
+        // A device is briefly unresponsive right after a state change (e.g. a
+        // preset switch recomputes the channel footprint), so the first describe
+        // often times out. Retry a couple times with a short backoff so the
+        // refresh — and the footprint it carries — actually lands.
+        std::optional<std::string> resp;
+        for (int attempt = 0; attempt < 3 && !resp; ++attempt)
+        {
+            if (attempt)
+                std::this_thread::sleep_for(250ms);
+            resp = client->sendRequestOpt(Utils::JSONtemp::stringify("describe"), 4000ms);
+        }
+        if (!resp)
+        {
+            log.error("No response from {}", ip);
+            return false;
+        }
+
+        // Parse, then fetch presets off-lock (fetchPresets does network I/O),
+        // seeding from the cached client, then commit the result under the lock.
+        // Dispatches on engine version (v0.96 vs v0.98 differ). describe() rebuilds
+        // the fixture list (dropping cached preset names), so fetchPresets restores
+        // them — and the fresh describe carries the updated footprint.
+        Client parsed;
+        m_sharedState.withClient(ip, [&](Client &c)
+                                 { parsed = c; });
+        // Keep the cached preset names around: describe() rebuilds the fixture
+        // list from scratch (dropping them), and if a per-fixture re-fetch below
+        // fails (the device is still busy) we don't want to wipe the list.
+        const auto prevFixtures = parsed.fixtures;
+        if (!Backwards::Execute::describe(resp, parsed))
+        {
+            log.error("Could not parse describe from {}", ip);
+            return false;
+        }
+        Backwards::Execute::fetchPresets(parsed, *client);
+
+        // Restore preset names for any fixture the re-fetch left empty.
+        for (auto &f : parsed.fixtures)
+        {
+            if (!f.presets.empty())
+                continue;
+            for (const auto &p : prevFixtures)
+                if (p.id == f.id && !p.presets.empty())
+                {
+                    f.presets = p.presets;
+                    f.numPresets = static_cast<int>(p.presets.size());
+                    break;
+                }
+        }
+
+        m_sharedState.withClient(ip, [&](Client &c)
+                                 { c = std::move(parsed); });
         return true;
     }
 
@@ -634,6 +679,27 @@ namespace Test::Commands
                             current ? Theme::ok() : Theme::dim(),
                             current ? "* " : "  ", i, fix.presets[i], Theme::r());
             }
+        }
+        return true;
+    }
+
+    bool CommandExecutor::outputs(const Args &)
+    {
+        // Per selected fixture: fetch its outputs and print the raw response.
+        for (const auto &sel : m_selection)
+        {
+            auto client = m_sharedState.getESPClient(sel.ip);
+            auto resp = client->sendRequestOpt(
+                Utils::JSONtemp::stringify("getfixture", "id", sel.fixtureId, "value", "outputs"), 4000ms);
+            if (!resp || resp->empty())
+            {
+                log.error("No response from {} fixture {}", sel.ip, sel.fixtureId);
+                continue;
+            }
+
+            log.println("{}{}{} fixture {}{}{}", Theme::ip(), sel.ip, Theme::r(),
+                        Theme::name(), sel.fixtureId, Theme::r());
+            log.println("{}", *resp);
         }
         return true;
     }

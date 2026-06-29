@@ -57,6 +57,8 @@ namespace Test
                 // so the cards aren't swapped out from under the click).
                 auto onClick = [this, idx]()
                 {
+                    if (m_canSelect && !m_canSelect())
+                        return; // selection frozen (a command is in flight)
                     if (m_exec)
                         m_exec->selectIndex(idx, m_additive && m_additive());
                     if (m_onSelect)

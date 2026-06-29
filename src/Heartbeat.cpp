@@ -179,44 +179,33 @@ namespace Test
 
     void Heartbeat::requestPresets(const std::string &ip)
     {
+        std::size_t count = 0;
+        m_sharedState.withClient(ip, [&](Client &c)
+                                 { count = c.fixtures.size(); });
+
+        // Enqueue one presets request per fixture. The ESPClient worker runs them
+        // in order after the describe (single per-device queue) and retries each
+        // on timeout, so we don't need our own thread or retry loop here.
         auto client = m_sharedState.getESPClient(ip);
-
-        // One worker per device: fetch every fixture's presets sequentially. The
-        // device is effectively single-connection — right after describe it may
-        // not be ready to answer yet, so each request is retried with a short
-        // backoff. Sequential + retry avoids hammering it with overlapping
-        // connections (which is what made these time out at startup).
-        std::thread([this, ip, client]()
+        for (std::size_t i = 0; i < count; ++i)
+        {
+            const int id = static_cast<int>(i);
+            client->sendRequestAsync(
+                Utils::JSONtemp::stringify("getfixture", "id", id, "value", "presets"), 4000ms,
+                [this, ip, id](std::optional<std::string> resp)
+                {
+                    if (!resp)
                     {
-            std::size_t count = 0;
-            m_sharedState.withClient(ip, [&](Client &c)
-                                     { count = c.fixtures.size(); });
-
-            for (std::size_t i = 0; i < count; ++i)
-            {
-                const int id = static_cast<int>(i);
-                const auto req = Utils::JSONtemp::stringify("getfixture", "id", id, "value", "presets");
-
-                std::optional<std::string> resp;
-                for (int attempt = 0; attempt < 3 && !resp && running_ingest.load(); ++attempt)
-                {
-                    if (attempt > 0)
-                        std::this_thread::sleep_for(std::chrono::milliseconds(300));
-                    resp = client->sendRequestOpt(req, 4000ms);
-                }
-
-                if (!resp)
-                {
-                    logger.error("presets {} fixture {} failed", ip, id);
-                    continue;
-                }
-
-                m_sharedState.withClient(ip, [&](Client &c)
-                                         {
-                    if (id >= 0 && id < static_cast<int>(c.fixtures.size()))
-                        Test::Backwards::Execute::presets(resp, c, c.fixtures[id]); });
-            } })
-            .detach();
+                        logger.error("presets {} fixture {} failed", ip, id);
+                        return;
+                    }
+                    m_sharedState.withClient(ip, [&](Client &c)
+                                             {
+                        if (id >= 0 && id < static_cast<int>(c.fixtures.size()))
+                            Test::Backwards::Execute::presets(resp, c, c.fixtures[id]); });
+                },
+                /*retries=*/3);
+        }
     }
 
 }

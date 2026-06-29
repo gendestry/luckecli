@@ -61,12 +61,19 @@ namespace Test::Commands
         bool setwifi(const Args &);
         bool describe(const Args &);
         bool presets(const Args &);
+        bool outputs(const Args &);
 
         // GET/SET a boolean engine task (wifianimation/serialprint/wirelessprint).
         // `field` is the firmware request name; `cache` is the matching cached
         // Engine flag to patch (nullptr if the flag isn't cached).
         bool taskConfig(const Args &args, const std::string &cmdName,
                         const std::string &field, bool Client::Engine::*cache);
+
+        // Re-fetch a device's describe (and preset names) and commit it to the
+        // cache. Used after operations that change cached fixture data the device
+        // computes itself — e.g. setpreset alters the channel footprint. Returns
+        // false (and logs) if the device doesn't respond or the parse fails.
+        bool refreshDevice(const std::string &ip);
 
         // Unique device IPs across the current selection (a device may host
         // several selected fixtures). For device-level commands (reboot, setwifi).

@@ -1,8 +1,10 @@
 #pragma once
 #include "View.h"
 #include "FixtureGrid.h"
+#include "Components/InfoPanel.h"
 #include "Components/PresetDropdown.h"
 
+#include <atomic>
 #include <functional>
 #include <string>
 
@@ -33,11 +35,15 @@ namespace Test
         SharedState &m_state;
         Commands::CommandExecutor *&m_exec;
         FixtureGrid m_grid;
+        InfoPanel m_info;
         PresetDropdown m_presets;
 
-        std::function<void()> m_refresh; // valid only while run() is looping
-        bool m_modifier = false;         // ctrl/shift held on the last mouse event
-        bool m_multiMode = false;        // sticky multi-select toggle (every click adds)
+        std::function<void()> m_refresh;                       // valid only while run() is looping
+        std::function<bool(const std::string &)> m_command;    // command sink, copied in run()
+        std::atomic<bool> m_busy{false};                       // a command is running off-thread
+        bool m_modifier = false;                               // ctrl/shift held on the last mouse event
+        bool m_multiMode = false;                              // sticky multi-select toggle (every click adds)
+        bool m_showUniverse = false;                           // universe-viewer popup open?
     };
 
 }

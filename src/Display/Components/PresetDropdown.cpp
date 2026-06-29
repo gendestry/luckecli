@@ -13,22 +13,25 @@ namespace Test
     PresetDropdown::PresetDropdown(SharedState &state, Commands::CommandExecutor *&exec)
         : m_state(state), m_exec(exec)
     {
-        DropdownOption opt;
-        opt.open = &m_open;
-        opt.radiobox.entries = &m_entries; // pointer: tracks live mutations to m_entries
-        opt.radiobox.selected = &m_selected;
+        RadioboxOption opt;
+        opt.entries = &m_entries; // pointer: tracks live mutations to m_entries
+        opt.selected = &m_selected;
 
-        // Fire the apply hook only on a real user pick. Programmatic updates in
-        // sync() write m_selected directly (not through the radiobox), so they
-        // don't trip this.
-        opt.radiobox.on_change = [this]
+        // Apply only when the committed selection actually changes. on_change also
+        // fires on mere navigation (arrow keys move focused_entry), and sync()
+        // updates m_selected programmatically — m_applied filters both so we don't
+        // re-send the preset the fixture is already on.
+        opt.on_change = [this]
         {
+            if (m_selected == m_applied)
+                return;
+            m_applied = m_selected;
             if (m_onApply)
                 m_onApply(m_selected);
         };
 
         // Highlight the active preset (green ●); show focus with a subtle bg.
-        opt.radiobox.transform = [](const EntryState &s)
+        opt.transform = [](const EntryState &s)
         {
             auto e = text((s.state ? " ● " : "   ") + s.label);
             e = e | color(s.state ? Color::RGB(90, 200, 110) : Color::RGB(185, 185, 195));
@@ -39,16 +42,13 @@ namespace Test
             return e;
         };
 
-        // Collapsed header: the current preset name with an open/close caret.
-        opt.radiobox.focused_entry = &m_selected;
-        opt.transform = [](bool open, Element checkbox, Element radiobox)
-        {
-            if (open)
-                return vbox({checkbox, radiobox | border}) | size(WIDTH, GREATER_THAN, 24);
-            return checkbox;
-        };
+        // focused_entry is the cursor — kept separate from `selected` so browsing
+        // the list doesn't commit (and re-apply) a preset.
+        opt.focused_entry = &m_focused;
 
-        m_dropdown = Dropdown(opt);
+        // The collapsible's header label (m_label) tracks the active preset name;
+        // expanding it reveals the radiobox list. m_open holds the toggle state.
+        m_collapsible = Collapsible(&m_label, Radiobox(opt), &m_open);
     }
 
     void PresetDropdown::sync()
@@ -92,6 +92,12 @@ namespace Test
 
         m_entries = fx.presets;
         m_selected = std::clamp(fx.presetIndex, 0, static_cast<int>(m_entries.size()) - 1);
+        // Keep cursor and the "already applied" marker in step with the cache so
+        // this programmatic update can't trigger on_change → a redundant setpreset.
+        m_focused = m_selected;
+        m_applied = m_selected;
+        // Header shows the active preset name (referenced live by the collapsible).
+        m_label = m_entries[m_selected];
         m_active = true;
     }
 
@@ -101,7 +107,7 @@ namespace Test
         { return text(s) | color(Color::RGB(80, 190, 190)); };
 
         if (m_active)
-            return vbox({label("  preset"), hbox({text("  "), m_dropdown->Render()})});
+            return vbox({label("  preset"), hbox({text("  "), m_collapsible->Render()})});
 
         if (m_single && m_numPresets > 0)
             return hbox({label("  preset    "),

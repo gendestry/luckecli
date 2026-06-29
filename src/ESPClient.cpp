@@ -7,6 +7,7 @@
 #include "Network/Connection.h"
 #include "Utils/SafeQueue.h"
 
+#include <future>
 #include <thread>
 
 namespace Test
@@ -15,26 +16,86 @@ namespace Test
     ESPClient::ESPClient(std::string ip, SharedState &state)
         : logger("CONFIG"), m_sharedState(state), ip_(std::move(ip))
     {
+        worker_ = std::thread(&ESPClient::workerLoop, this);
     }
 
     ESPClient::~ESPClient()
     {
+        {
+            std::lock_guard lock(jobsMutex_);
+            running_ = false;
+        }
+        jobsCv_.notify_all();
+        if (worker_.joinable())
+            worker_.join();
     }
 
-    std::optional<std::string> ESPClient::sendRequestOpt(const std::string &request, std::chrono::milliseconds timeout)
+    void ESPClient::enqueue(Job job)
     {
-        // Serialize: only one request in-flight to this device at a time.
-        // Without this, two callers' clear()/pop_for() on the same IP race and
-        // steal each other's replies (the queue is keyed only by IP).
-        std::lock_guard lock(sendMutex_);
+        {
+            std::lock_guard lock(jobsMutex_);
+            jobs_.push_back(std::move(job));
+        }
+        jobsCv_.notify_one();
+    }
 
+    void ESPClient::workerLoop()
+    {
+        while (true)
+        {
+            Job job;
+            {
+                std::unique_lock lock(jobsMutex_);
+                jobsCv_.wait(lock, [&]
+                             { return !running_ || !jobs_.empty(); });
+
+                // Shutting down: fulfill any waiting callers with nullopt (so a
+                // sendRequestOpt blocked on its future doesn't hang on a dead
+                // promise), then exit. Pending async jobs are simply dropped.
+                if (!running_)
+                {
+                    while (!jobs_.empty())
+                    {
+                        Job pending = std::move(jobs_.front());
+                        jobs_.pop_front();
+                        lock.unlock();
+                        if (pending.onResponse)
+                            pending.onResponse(std::nullopt);
+                        lock.lock();
+                    }
+                    return;
+                }
+
+                job = std::move(jobs_.front());
+                jobs_.pop_front();
+            }
+
+            // One attempt, then retry-with-backoff on timeout. Covers the device's
+            // "not ready right after the previous connection closed" window.
+            std::optional<std::string> resp;
+            for (int attempt = 0; attempt <= job.retries && running_; ++attempt)
+            {
+                if (attempt > 0)
+                    std::this_thread::sleep_for(job.backoff);
+                resp = doRequest(job.request, job.timeout);
+                if (resp)
+                    break;
+            }
+
+            if (job.onResponse)
+                job.onResponse(std::move(resp));
+        }
+    }
+
+    std::optional<std::string> ESPClient::doRequest(const std::string &request, std::chrono::milliseconds timeout)
+    {
         Network::Connection conn(ip_);
         if (!conn.open())
             return std::nullopt;
 
-        // Requests are serialized (one in-flight at a time), so drop any leftover
-        // response from a previously timed-out request. This keeps each reply
-        // matched to the request that asked for it and prevents permanent desync.
+        // Only the worker reaches here, so requests are already serialized; drop
+        // any leftover reply from a previously timed-out request so each reply
+        // stays matched to the request that asked for it.
         m_sharedState.getQueue().clear(ip_);
 
         if (!conn.send(request))
@@ -48,15 +109,25 @@ namespace Test
         return m_sharedState.getQueue().pop_for(ip_, timeout);
     }
 
-    void ESPClient::sendRequestAsync(const std::string &req, std::chrono::milliseconds timeout, ResponseHandler onResponse)
+    std::optional<std::string> ESPClient::sendRequestOpt(const std::string &request, std::chrono::milliseconds timeout)
     {
-        auto self = shared_from_this();
-        std::thread([self, req, timeout, onResponse = std::move(onResponse)]()
-                    {
-                        auto resp = self->sendRequestOpt(req, timeout); // blocks on this thread only
-                        if (onResponse)
-                            onResponse(std::move(resp)); })
-            .detach();
+        // Enqueue a job whose callback fulfills a promise, then block on its
+        // future until the worker hands back the reply. Keeps the call site
+        // synchronous while still funneling all traffic through the one worker.
+        auto prom = std::make_shared<std::promise<std::optional<std::string>>>();
+        auto fut = prom->get_future();
+
+        enqueue({request, timeout,
+                 [prom](std::optional<std::string> reply)
+                 { prom->set_value(std::move(reply)); }});
+
+        return fut.get();
+    }
+
+    void ESPClient::sendRequestAsync(const std::string &req, std::chrono::milliseconds timeout, ResponseHandler onResponse,
+                                     int retries, std::chrono::milliseconds backoff)
+    {
+        enqueue({req, timeout, std::move(onResponse), retries, backoff});
     }
 
     // void ESPClient::run(const std::string &request, bool jsonres, std::chrono::milliseconds timeout)

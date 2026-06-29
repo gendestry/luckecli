@@ -38,6 +38,11 @@ namespace Test
         void setAdditiveProvider(std::function<bool()> fn) { m_additive = std::move(fn); }
         void setOnSelect(std::function<void()> fn) { m_onSelect = std::move(fn); }
 
+        // Optional gate: when set and it returns false, clicks are ignored (the
+        // selection can't change). Used to freeze the selection while a command is
+        // running off-thread against it.
+        void setSelectableProvider(std::function<bool()> fn) { m_canSelect = std::move(fn); }
+
         void setColumns(int cols) { m_cols = cols; }
 
     private:
@@ -47,6 +52,7 @@ namespace Test
         ftxui::Component m_container; // stable root (Container::Vertical of rows)
         std::function<bool()> m_additive;
         std::function<void()> m_onSelect;
+        std::function<bool()> m_canSelect;
         int m_cols = 3;
         int m_onlineCount = 0;
     };
