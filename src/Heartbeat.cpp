@@ -101,7 +101,18 @@ namespace Test
             if (!m_sharedState.isNewClient(ip))
             {
                 using json = nlohmann::json;
-                json jarr = json::parse(data);
+                // An empty datagram (recvfrom == 0) or garbage would throw and
+                // crash the ingest thread — skip anything that isn't valid JSON.
+                json jarr;
+                try
+                {
+                    jarr = json::parse(data);
+                }
+                catch (const json::parse_error &e)
+                {
+                    logger.error("Bad heartbeat from {}: {}", ip, e.what());
+                    continue;
+                }
                 std::string version = jarr.value("version", "outdated");
 
                 Client client;
@@ -145,13 +156,67 @@ namespace Test
                                          return;
                                      }
 
-                                     // Parse into the stored Client, dispatching on its engine
-                                     // version (v0.96 vs v0.98 differ).
+                                     // Parse into a local Client (dispatching on engine version),
+                                     // seeded from the cached client so version/ip are known, then
+                                     // commit it back under the lock.
+                                     Client parsed;
                                      m_sharedState.withClient(ip, [&](Client &c)
-                                                              {
-                                         if (!Test::Backwards::Execute::describe(resp, c))
-                                             logger.error("describe parse failed for {}", ip); });
+                                                              { parsed = c; });
+
+                                     if (Test::Backwards::Execute::describe(resp, parsed))
+                                     {
+                                         m_sharedState.withClient(ip, [&](Client &c)
+                                                                  { c = std::move(parsed); });
+                                         // Now that fixtures are known, fetch their presets —
+                                         // chained after describe so the two don't contend for
+                                         // the device connection.
+                                         requestPresets(ip);
+                                     }
+                                     else
+                                         logger.error("describe parse failed for {}", ip);
                                  });
+    }
+
+    void Heartbeat::requestPresets(const std::string &ip)
+    {
+        auto client = m_sharedState.getESPClient(ip);
+
+        // One worker per device: fetch every fixture's presets sequentially. The
+        // device is effectively single-connection — right after describe it may
+        // not be ready to answer yet, so each request is retried with a short
+        // backoff. Sequential + retry avoids hammering it with overlapping
+        // connections (which is what made these time out at startup).
+        std::thread([this, ip, client]()
+                    {
+            std::size_t count = 0;
+            m_sharedState.withClient(ip, [&](Client &c)
+                                     { count = c.fixtures.size(); });
+
+            for (std::size_t i = 0; i < count; ++i)
+            {
+                const int id = static_cast<int>(i);
+                const auto req = Utils::JSONtemp::stringify("getfixture", "id", id, "value", "presets");
+
+                std::optional<std::string> resp;
+                for (int attempt = 0; attempt < 3 && !resp && running_ingest.load(); ++attempt)
+                {
+                    if (attempt > 0)
+                        std::this_thread::sleep_for(std::chrono::milliseconds(300));
+                    resp = client->sendRequestOpt(req, 4000ms);
+                }
+
+                if (!resp)
+                {
+                    logger.error("presets {} fixture {} failed", ip, id);
+                    continue;
+                }
+
+                m_sharedState.withClient(ip, [&](Client &c)
+                                         {
+                    if (id >= 0 && id < static_cast<int>(c.fixtures.size()))
+                        Test::Backwards::Execute::presets(resp, c, c.fixtures[id]); });
+            } })
+            .detach();
     }
 
 }

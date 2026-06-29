@@ -4,6 +4,8 @@
 #include <nlohmann/json.hpp>
 
 #include "Client.h"
+#include "ESPClient.h"
+#include "Utils/JSONtemp.h"
 #include "v96.h"
 #include "v98.h"
 
@@ -33,8 +35,9 @@ namespace Test::Backwards
 
     public:
         // Parse a raw describe response into `client`, dispatching on the
-        // client's known engine version. Returns false on empty input, a JSON
-        // parse error, or an explicit {"err": ...} payload.
+        // client's known engine version. Pure parse, no network — call
+        // fetchPresets() afterwards to fill in presets. Returns false on empty
+        // input, a JSON parse error, or an explicit {"err": ...} payload.
         static bool describe(const std::optional<std::string> &resp, Test::Client &client)
         {
             if (!resp || resp->empty())
@@ -63,6 +66,21 @@ namespace Test::Backwards
                 break;
             }
             return true;
+        }
+
+        // Fetch every fixture's presets over `conn` and merge them into `client`
+        // (presets aren't part of the describe payload — one getfixture request
+        // per fixture). Does network I/O, so callers must NOT hold the
+        // SharedState lock; operate on a local Client and commit it afterwards.
+        static void fetchPresets(Test::Client &client, ESPClient &conn)
+        {
+            for (auto &fix : client.fixtures)
+            {
+                auto pr = conn.sendRequestOpt(
+                    Utils::JSONtemp::stringify("getfixture", "id", fix.id, "value", "presets"), 4000ms);
+                if (pr)
+                    presets(pr, client, fix);
+            }
         }
 
         // Parse a raw "getfixture value=presets" response into `fix.presets`,

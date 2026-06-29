@@ -7,6 +7,11 @@
 #include "Args.h"
 #include "SharedState.h"
 
+namespace Test
+{
+    class Display; // the frontend driving the input loop; full def needed in .cpp
+}
+
 namespace Test::Commands
 {
 
@@ -26,6 +31,7 @@ namespace Test::Commands
     private:
         Log log;
         SharedState &m_sharedState;
+        Display &m_display;
         Registry m_registry;
 
         // The selection is a list so commands can target many fixtures at once;
@@ -49,10 +55,12 @@ namespace Test::Commands
         bool setuniverse(const Args &);
         bool setaddress(const Args &);
         bool setpreset(const Args &);
+        bool setname(const Args &);
         bool highlight(const Args &);
         bool reboot(const Args &);
         bool setwifi(const Args &);
         bool describe(const Args &);
+        bool presets(const Args &);
 
         // GET/SET a boolean engine task (wifianimation/serialprint/wirelessprint).
         // `field` is the firmware request name; `cache` is the matching cached
@@ -82,15 +90,31 @@ namespace Test::Commands
                              const std::string &jsonKey, int Client::Fixture::*member);
 
     public:
-        explicit CommandExecutor(SharedState &state);
+        CommandExecutor(SharedState &state, Display &display);
 
         bool shouldQuit() const { return m_exit; }
+
+        // Selection accessors for frontends (e.g. the FTXUI grid marking which
+        // cards are selected). Only touched on the command/UI thread.
+        bool isSelected() const { return !m_selection.empty(); }
+        const std::vector<Selection> &selection() const { return m_selection; }
+
+        // Select the fixture at a flat index (as listed/shown in the grid).
+        // additive=false replaces the selection; additive=true toggles the
+        // fixture in or out of it (shift-click). Out-of-range indices are ignored.
+        void selectIndex(int flatIndex, bool additive);
+
+        // Bulk selection helpers for the TUI toolbar. selectAll() selects every
+        // currently-online fixture; clearSelection() drops the whole selection.
+        // Touched only on the command/UI thread, like selectIndex().
+        void selectAll();
+        void clearSelection();
 
         // Tokenize, resolve and dispatch a single line. Returns the handler's
         // result (false on unknown/invalid command).
         bool resolveCommand(const std::string &line);
 
-        // Blocking REPL over stdin until exit.
+        // Drive the bound Display's input loop until exit.
         void run();
     };
 

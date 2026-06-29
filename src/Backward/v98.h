@@ -64,17 +64,21 @@ namespace Test::Backwards
         }
 
         // presets response (getfixture value=presets):
-        //   { "val": { "selected": int,
+        //   { "req": "presets",
+        //     "val": { "selected": int,
         //       "presets": { "groups": [{ "name": str, "settings": [...] }] } } }
-        // Fills `fix.presets` with the group names.
+        // Fills `fix.presets` with the group names and syncs selected/count.
         static void presets(const nlohmann::json &data, Test::Client::Fixture &fix)
         {
             const auto val = data.value("val", nlohmann::json::object());
             const auto presetsObj = val.value("presets", nlohmann::json::object());
 
+            fix.presetIndex = val.value("selected", fix.presetIndex);
+
             fix.presets.clear();
             for (const auto &group : presetsObj.value("groups", nlohmann::json::array()))
                 fix.presets.push_back(group.value("name", "unnamed"));
+            fix.numPresets = static_cast<int>(fix.presets.size());
         }
     };
 }

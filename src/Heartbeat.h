@@ -28,6 +28,11 @@ namespace Test
         // back into its state when it arrives (off the ingest thread).
         void requestDescribe(const std::string &ip);
 
+        // Fire async "getfixture value=presets" requests at a freshly-added
+        // client's fixtures. The heartbeat-side handling likely differs from the
+        // command path, so for now it just prints the raw responses.
+        void requestPresets(const std::string &ip);
+
     public:
         Heartbeat(Test::SharedState &state);
         ~Heartbeat();

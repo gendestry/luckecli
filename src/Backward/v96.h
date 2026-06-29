@@ -13,6 +13,26 @@ namespace Test::Backwards
     //      "wifi" and "fixture_handler".
     struct V96
     {
+        // Unwrap the {"status","response"} envelope: "response" is itself a
+        // JSON-encoded string. Returns `outer` unchanged if there's no string
+        // "response" field or it fails to parse — Execute's try/catch only
+        // covers the outer parse, so this guards the inner one.
+        static nlohmann::json unwrap(const nlohmann::json &outer)
+        {
+            if (outer.contains("response") && outer["response"].is_string())
+            {
+                try
+                {
+                    return nlohmann::json::parse(outer["response"].get<std::string>());
+                }
+                catch (const nlohmann::json::parse_error &)
+                {
+                    return outer;
+                }
+            }
+            return outer;
+        }
+
         // describe response (v0.96):
         //   {"status":"OK","response":"{
         //     \"engine\": {
@@ -25,11 +45,7 @@ namespace Test::Backwards
         //   }"}
         static void describe(const nlohmann::json &outer, Test::Client &client)
         {
-            // Unwrap the {"status","response"} envelope: "response" is itself a
-            // JSON-encoded string.
-            nlohmann::json data = outer;
-            if (outer.contains("response") && outer["response"].is_string())
-                data = nlohmann::json::parse(outer["response"].get<std::string>());
+            const nlohmann::json data = unwrap(outer);
 
             const auto engine = data.value("engine", nlohmann::json::object());
             const auto settings = engine.value("settings", nlohmann::json::object());
@@ -75,16 +91,17 @@ namespace Test::Backwards
         // Fills `fix.presets` with the group names.
         static void presets(const nlohmann::json &outer, Test::Client::Fixture &fix)
         {
-            nlohmann::json data = outer;
-            if (outer.contains("response") && outer["response"].is_string())
-                data = nlohmann::json::parse(outer["response"].get<std::string>());
+            const nlohmann::json data = unwrap(outer);
 
             const auto val = data.value("val", nlohmann::json::object());
             const auto presetsObj = val.value("presets", nlohmann::json::object());
 
+            fix.presetIndex = val.value("selected", fix.presetIndex);
+
             fix.presets.clear();
             for (const auto &group : presetsObj.value("groups", nlohmann::json::array()))
                 fix.presets.push_back(group.value("name", "unnamed"));
+            fix.numPresets = static_cast<int>(fix.presets.size());
         }
     };
 }

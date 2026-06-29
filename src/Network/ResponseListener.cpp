@@ -154,36 +154,44 @@ namespace Test::Network
             inet_ntop(AF_INET, &clientAddr.sin_addr, ipbuf, sizeof(ipbuf));
             std::string ip(ipbuf);
 
-            // Guard against a device that sends the response but doesn't close the
-            // connection: if no data arrives for a bit, treat the message as done.
-            struct timeval tv{};
-            tv.tv_sec = 1;
-            tv.tv_usec = 0;
-            setsockopt(clientSock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+            // Handle each response on its own thread. A device that sends its reply
+            // but doesn't close the socket stalls for the 1s idle timeout below;
+            // doing that inline serialized every response through this one thread,
+            // so back-to-back requests (e.g. describe then presets, or several
+            // devices at startup) backed up and blew past the request timeout.
+            std::thread([this, clientSock, ip = std::move(ip)]() mutable
+                        {
+                // Guard against a device that sends the response but doesn't close the
+                // connection: if no data arrives for a bit, treat the message as done.
+                struct timeval tv{};
+                tv.tv_sec = 1;
+                tv.tv_usec = 0;
+                setsockopt(clientSock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
-            // Accumulate the full response (the device closes the connection when
-            // done) and push it as ONE message. The previous per-recv push split
-            // segmented/partial TCP reads into separate queue items, which broke
-            // JSON parsing for anything that didn't arrive in a single segment.
-            std::string message;
-            while (running)
-            {
-                char buffer[4096];
-                ssize_t n = recv(clientSock, buffer, sizeof(buffer), 0);
-
-                if (n > 0)
+                // Accumulate the full response (the device closes the connection when
+                // done) and push it as ONE message. The previous per-recv push split
+                // segmented/partial TCP reads into separate queue items, which broke
+                // JSON parsing for anything that didn't arrive in a single segment.
+                std::string message;
+                while (running)
                 {
-                    message.append(buffer, n);
-                    continue;
+                    char buffer[4096];
+                    ssize_t n = recv(clientSock, buffer, sizeof(buffer), 0);
+
+                    if (n > 0)
+                    {
+                        message.append(buffer, n);
+                        continue;
+                    }
+                    // n == 0: peer closed. n < 0: idle timeout/error → message complete.
+                    break;
                 }
-                // n == 0: peer closed. n < 0: idle timeout/error → message complete.
-                break;
-            }
 
-            if (!message.empty())
-                m_sharedState.getQueue().push(ip, std::move(message));
+                if (!message.empty())
+                    m_sharedState.getQueue().push(ip, std::move(message));
 
-            close(clientSock);
+                close(clientSock); })
+                .detach();
         }
 
         close(serverSock);

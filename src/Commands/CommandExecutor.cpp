@@ -4,20 +4,21 @@
 #include "Backward/Commands.h"
 #include "Utils/JSONtemp.h"
 #include "Theme.h"
+#include "Display/Display.h"
 
 #include <algorithm>
 #include <format>
-#include <iostream>
 #include <optional>
 #include <nlohmann/json.hpp>
 
 namespace Test::Commands
 {
 
-    CommandExecutor::CommandExecutor(SharedState &state)
-        : log("Command"), m_sharedState(state)
+    CommandExecutor::CommandExecutor(SharedState &state, Display &display)
+        : log("Command"), m_sharedState(state), m_display(display)
     {
         bindCommands();
+        m_display.bindCommandSource(this);
     }
 
     // Flatten the device registry into an ordered (ip, fixtureId) list so a
@@ -26,14 +27,12 @@ namespace Test::Commands
 
     void CommandExecutor::run()
     {
-        std::string line;
-        while (!m_exit)
-        {
-            std::cout << selectionPrompt() << std::flush;
-            if (!std::getline(std::cin, line))
-                break;
+        m_display.setPrompt(selectionPrompt());
+        m_display.run([this](const std::string &line)
+                      {
             resolveCommand(line);
-        }
+            m_display.setPrompt(selectionPrompt());
+            return m_exit; });
     }
 
     bool CommandExecutor::resolveCommand(const std::string &line)
@@ -107,6 +106,11 @@ namespace Test::Commands
                        [this](const Args &a)
                        { return setpreset(a); });
 
+        m_registry.add("setname", "Set the name of the selected fixture", "setname <name>",
+                       Command::Usable::SELECTED,
+                       [this](const Args &a)
+                       { return setname(a); });
+
         m_registry.add("highlight", "Flash the selected fixture", "highlight <on/off>?",
                        Command::Usable::SELECTED,
                        [this](const Args &a)
@@ -116,6 +120,11 @@ namespace Test::Commands
                        Command::Usable::SELECTED,
                        [this](const Args &a)
                        { return describe(a); });
+
+        m_registry.add("presets", "List presets for the selected fixture(s)", "presets",
+                       Command::Usable::SELECTED,
+                       [this](const Args &a)
+                       { return presets(a); });
 
         m_registry.group("Device");
 
@@ -152,6 +161,7 @@ namespace Test::Commands
     bool CommandExecutor::exit(const Args &)
     {
         m_exit = true;
+        m_display.quit(); // let the frontend tear down its loop (CLI or TUI)
         return true;
     }
 
@@ -248,6 +258,39 @@ namespace Test::Commands
         return true;
     }
 
+    void CommandExecutor::selectIndex(int flatIndex, bool additive)
+    {
+        auto all = flatten(m_sharedState);
+        if (flatIndex < 0 || flatIndex >= static_cast<int>(all.size()))
+            return;
+        const auto pick = all[flatIndex];
+
+        if (!additive)
+        {
+            m_selection = {pick};
+            return;
+        }
+
+        // Toggle: drop it if already selected, otherwise add it.
+        auto it = std::find_if(m_selection.begin(), m_selection.end(),
+                               [&](const Selection &s)
+                               { return s.ip == pick.ip && s.fixtureId == pick.fixtureId; });
+        if (it != m_selection.end())
+            m_selection.erase(it);
+        else
+            m_selection.push_back(pick);
+    }
+
+    void CommandExecutor::selectAll()
+    {
+        m_selection = flatten(m_sharedState);
+    }
+
+    void CommandExecutor::clearSelection()
+    {
+        m_selection.clear();
+    }
+
     bool CommandExecutor::setuniverse(const Args &args)
     {
         auto universe = args.getInt(1);
@@ -291,6 +334,41 @@ namespace Test::Commands
     {
         // Firmware field is "presetIndex"; the command is the friendlier "setpreset".
         return setFixtureField(args, "setpreset", "presetIndex", &Client::Fixture::presetIndex);
+    }
+
+    bool CommandExecutor::setname(const Args &args)
+    {
+        if (!args.has(1))
+        {
+            log.error("Usage: setname <name>");
+            return false;
+        }
+        const std::string &name = args[1];
+
+        // Per-fixture only: a multi-selection has no single target.
+        if (m_selection.size() != 1)
+        {
+            log.error("setname targets a single fixture (selected {})", m_selection.size());
+            return false;
+        }
+
+        const auto &sel = m_selection.front();
+        auto client = m_sharedState.getESPClient(sel.ip);
+        auto resp = client->sendRequestOpt(
+            Utils::JSONtemp::stringify("setfixture", "id", sel.fixtureId, "name", name), 4000ms);
+        if (!resp)
+        {
+            log.error("No response from {} fixture {}", sel.ip, sel.fixtureId);
+            return false;
+        }
+
+        // Success: patch the cached fixture so a later `describe`/`list` reflects it.
+        m_sharedState.withClient(sel.ip, [&](Client &c)
+                                 {
+            if (sel.fixtureId >= 0 && sel.fixtureId < static_cast<int>(c.fixtures.size()))
+                c.fixtures[sel.fixtureId].name = name; });
+        okFixture(sel, "name", name);
+        return true;
     }
 
     bool CommandExecutor::setFixtureField(const Args &args, const std::string &cmdName,
@@ -490,39 +568,72 @@ namespace Test::Commands
                 continue;
             }
 
-            // Parse into the stored Client, dispatching on its engine version
-            // (v0.96 vs v0.98 have different describe shapes).
-            bool ok = false;
+            // Parse, then fetch presets off-lock (fetchPresets does network I/O),
+            // seeding from the cached client, then commit the result under the lock.
+            // Dispatches on engine version (v0.96 vs v0.98 differ).
+            Client parsed;
             m_sharedState.withClient(ip, [&](Client &c)
-                                     { ok = Backwards::Execute::describe(resp, c); });
-            if (!ok)
+                                     { parsed = c; });
+            if (!Backwards::Execute::describe(resp, parsed))
             {
                 log.error("Could not parse describe from {}", ip);
                 continue;
             }
-
-            // describe doesn't carry presets — fetch them for every fixture and
-            // merge into the cache so the whole device prints with its presets.
-            int count = 0;
-            m_sharedState.withClient(ip, [&](Client &c)
-                                     { count = static_cast<int>(c.fixtures.size()); });
-
-            for (int id = 0; id < count; ++id)
-            {
-                auto presetResp = client->sendRequestOpt(
-                    Utils::JSONtemp::stringify("getfixture", "id", id, "value", "presets"), 4000ms);
-                if (!presetResp)
-                    continue;
-                m_sharedState.withClient(ip, [&](Client &c)
-                                         {
-                    if (id < static_cast<int>(c.fixtures.size()))
-                        Backwards::Execute::presets(presetResp, c, c.fixtures[id]); });
-            }
+            Backwards::Execute::fetchPresets(parsed, *client);
 
             std::string summary;
             m_sharedState.withClient(ip, [&](Client &c)
-                                     { summary = c.toString(); });
+                                     {
+                c = std::move(parsed);
+                summary = c.toString(); });
             log.println("{}{}{}\n{}", Theme::ip(), ip, Theme::r(), summary);
+        }
+        return true;
+    }
+
+    bool CommandExecutor::presets(const Args &)
+    {
+        // Per selected fixture: fetch its presets, merge into the cache and print.
+        for (const auto &sel : m_selection)
+        {
+            auto client = m_sharedState.getESPClient(sel.ip);
+            auto resp = client->sendRequestOpt(
+                Utils::JSONtemp::stringify("getfixture", "id", sel.fixtureId, "value", "presets"), 4000ms);
+            if (!resp)
+            {
+                log.error("No response from {} fixture {}", sel.ip, sel.fixtureId);
+                continue;
+            }
+
+            // Parse (no network) under the lock and copy the fixture out to print.
+            Client::Fixture fix;
+            bool ok = false;
+            m_sharedState.withClient(sel.ip, [&](Client &c)
+                                     {
+                if (sel.fixtureId < 0 || sel.fixtureId >= static_cast<int>(c.fixtures.size()))
+                    return;
+                Backwards::Execute::presets(resp, c, c.fixtures[sel.fixtureId]);
+                fix = c.fixtures[sel.fixtureId];
+                ok = true; });
+            if (!ok)
+            {
+                log.error("Unknown fixture {} on {}", sel.fixtureId, sel.ip);
+                continue;
+            }
+
+            log.println("{}{}{} {}{}{}", Theme::ip(), sel.ip, Theme::r(), Theme::name(), fix.name, Theme::r());
+            if (fix.presets.empty())
+            {
+                log.println("  {}(no presets){}", Theme::dim(), Theme::r());
+                continue;
+            }
+            for (std::size_t i = 0; i < fix.presets.size(); ++i)
+            {
+                const bool current = (static_cast<int>(i) == fix.presetIndex);
+                log.println("  {}{}[{}] {}{}",
+                            current ? Theme::ok() : Theme::dim(),
+                            current ? "* " : "  ", i, fix.presets[i], Theme::r());
+            }
         }
         return true;
     }
