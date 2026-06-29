@@ -2,6 +2,7 @@
 // Created by bobi on 20. 05. 26.
 //
 #include "SharedState.h"
+#include "ESPClient.h" // complete type, so the shared_ptr<ESPClient> map can be destroyed here
 
 #include <iostream>
 
@@ -14,7 +15,18 @@ namespace Test
         // log.setLocalLevel(Loggable::DEBUG);
     }
 
-        // void SharedState::triggerChange() {
+    SharedState::~SharedState() = default;
+
+    std::shared_ptr<ESPClient> SharedState::getESPClient(const std::string &ip)
+    {
+        std::lock_guard lock(connMutex);
+        auto it = connections.find(ip);
+        if (it == connections.end())
+            it = connections.emplace(ip, std::make_shared<ESPClient>(ip, *this)).first;
+        return it->second;
+    }
+
+    // void SharedState::triggerChange() {
     //     std::lock_guard lock(callbackMutex);
     //     if (onChangeCallback)
     //         onChangeCallback();
@@ -37,7 +49,7 @@ namespace Test
         std::lock_guard lock(mutex);
         auto &c = clients[ip];
         c.updateLastPing();
-        log.println("Update: IP: {}, ping: {}", ip, c.last_ping_str);
+        // log.println("Update: IP: {}, ping: {}", ip, c.last_ping_str);
     }
 
     // void SharedState::addClient(ClientInfo client, std::string ip) {

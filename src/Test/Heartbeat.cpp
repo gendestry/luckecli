@@ -132,7 +132,7 @@ namespace Test
 
     void Heartbeat::requestDescribe(const std::string &ip)
     {
-        auto client = std::make_shared<ESPClient>(m_sharedState.getClient(ip), m_sharedState);
+        auto client = m_sharedState.getESPClient(ip);
         client->sendRequestAsync(JSONtemp::stringify("describe"), 4000ms,
                                  [this, ip](std::optional<std::string> resp)
                                  {

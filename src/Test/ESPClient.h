@@ -4,6 +4,7 @@
 #include <future>
 #include <functional>
 #include <memory>
+#include <mutex>
 
 #include "Diary/Log.h"
 #include "Test/Utils/SafeQueue.h"
@@ -19,10 +20,11 @@ namespace Test
         Log logger;
 
         SharedState &m_sharedState;
-        const Client &clientInfo;
+        std::string ip_;        // value, not a reference into the clients map
+        std::mutex sendMutex_;  // serializes requests to THIS device
 
     public:
-        ESPClient(const Client &cinfo, SharedState &state);
+        ESPClient(std::string ip, SharedState &state);
         ~ESPClient();
 
         // static void stop();
@@ -53,9 +55,6 @@ namespace Test
         {
             return ip_;
         }
-
-    private:
-        std::string ip_;
     };
 
     //

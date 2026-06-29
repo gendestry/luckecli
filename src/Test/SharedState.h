@@ -4,15 +4,12 @@
 
 #pragma once
 #include <functional>
-#include <list>
 #include <string>
 #include <mutex>
 #include <optional>
 #include <vector>
 #include <memory>
 #include <unordered_map>
-#include <thread>
-#include <atomic>
 
 #include "Client.h"
 #include "Test/Utils/SafeQueue.h"
@@ -22,16 +19,19 @@
 namespace Test
 {
 
+    class ESPClient; // forward decl — avoids the circular include with ESPClient.h
+
     class SharedState
     {
         Log log;
         std::unordered_map<std::string, Client> clients;
         std::mutex mutex;
-        std::mutex queueMutex;
+
+        std::unordered_map<std::string, std::shared_ptr<ESPClient>> connections;
+        std::mutex connMutex;
 
         Utils::SafeQueue queue;
-
-        // std::list<Client> clients_list;
+        std::mutex queueMutex;
 
         // std::mutex callbackMutex;
 
@@ -49,6 +49,11 @@ namespace Test
         std::function<void()> onChangeCallback;
 
         SharedState(std::function<void()> onChange = []() {});
+        // User-declared (defined in .cpp) so the shared_ptr<ESPClient> member is
+        // destroyed where ESPClient is a complete type, not in this header.
+        ~SharedState();
+
+        std::shared_ptr<ESPClient> getESPClient(const std::string &ip);
 
         bool isNewClient(const std::string &ip);
         void addClient(Client &&client, const std::string &ip);
@@ -70,6 +75,15 @@ namespace Test
             auto it = clients.find(ip);
             if (it != clients.end())
                 fn(it->second);
+        }
+
+        // Copy out (ip, Client) pairs under the lock for read-only iteration
+        // (listing, building a selection). Returns a snapshot so callers never
+        // hold references into the map while the heartbeat thread mutates it.
+        std::vector<std::pair<std::string, Client>> snapshot()
+        {
+            std::lock_guard lock(mutex);
+            return {clients.begin(), clients.end()};
         }
 
         Utils::SafeQueue &getQueue()
