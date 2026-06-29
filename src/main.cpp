@@ -1,16 +1,11 @@
-#include "Test/Commands/CommandExecutor.h"
-#include "Test/SharedState.h"
-#include "Test/Heartbeat.h"
-#include "Test/ESPClient.h"
-#include "Test/Network/ResponseListener.h"
-#include "JSONtemp.h"
-#include <iostream>
-#include <memory>
+#include "Commands/CommandExecutor.h"
+#include "SharedState.h"
+#include "Heartbeat.h"
+#include "Network/ResponseListener.h"
+#include "Diary/Log.h"
+
 #include <thread>
 #include <chrono>
-#include <nlohmann/json.hpp>
-
-#include "Diary/Log.h"
 // #include "Display/CLIDisplay.h"
 // #include "Display/FTXUIDisplay.h"
 

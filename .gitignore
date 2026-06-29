@@ -4,6 +4,7 @@ cmake_build_debug/
 build/
 analysis
 .vscode/
+old/
 .devcontainer/
 vcpkg_installed/
 .dockerignore

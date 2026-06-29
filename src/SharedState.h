@@ -4,89 +4,112 @@
 
 #pragma once
 #include <functional>
-#include <list>
 #include <string>
 #include <mutex>
-#include <optional>
 #include <vector>
 #include <memory>
 #include <unordered_map>
 
+#include "Client.h"
+#include "Utils/SafeQueue.h"
+
 #include "Diary/Log.h"
 
+namespace Test
+{
 
-struct ClientInfo {
-    struct Description 
+    class ESPClient; // forward decl — avoids the circular include with ESPClient.h
+
+    class SharedState
     {
-        std::string name;
-        std::string type;
-        uint8_t universe;
-        uint16_t address;
-        uint8_t preset;
-        // int num_leds = 0;
-    } description;
+        Log log;
+        std::unordered_map<std::string, Client> clients;
+        std::mutex mutex;
 
-    struct Wifi {
-        bool connected = false;
-        std::string ip;
-        int rssi;
-        std::string ssid;
-        std::string password;
-    } wifi;
+        std::unordered_map<std::string, std::shared_ptr<ESPClient>> connections;
+        std::mutex connMutex;
 
-    struct Engine {
-        std::string version = "outdated";
-        bool serial_print = false;
-        bool wifi_print = false;
-        bool wifi_animation = false;
-    } engine;
+        Utils::SafeQueue queue;
+        std::mutex queueMutex;
 
-    int selected = 0;
-    
-    // std::string ip;
-    // std::vector<Description>descriptions;
-};
+        // std::mutex callbackMutex;
 
-class SharedState {
-    Log log;
-    std::unordered_map<std::string, std::vector<std::reference_wrapper<ClientInfo>>> clients;
-    std::list<ClientInfo> clients_list;
-    std::mutex mutex;
+        // std::vector<std::string> responses;
+        // std::mutex mutexResponse;
 
-    std::mutex callbackMutex;
+        // In-memory response cache: ip -> (request -> raw response).
+        // Manual invalidation only: cleared by clearCache()/refresh, never expires on its own.
+        // std::unordered_map<std::string, std::unordered_map<std::string, std::string>> responseCache;
+        // std::mutex cacheMutex;
 
-    std::vector<std::string> responses;
-    std::mutex mutexResponse;
+        // void triggerChange();
 
-    // In-memory response cache: ip -> (request -> raw response).
-    // Manual invalidation only: cleared by clearCache()/refresh, never expires on its own.
-    std::unordered_map<std::string, std::unordered_map<std::string, std::string>> responseCache;
-    std::mutex cacheMutex;
+    public:
+        std::function<void()> onChangeCallback;
 
-    void triggerChange();
-public:
-    std::function<void()> onChangeCallback;
+        SharedState(std::function<void()> onChange = []() {});
+        // User-declared (defined in .cpp) so the shared_ptr<ESPClient> member is
+        // destroyed where ESPClient is a complete type, not in this header.
+        ~SharedState();
 
-    SharedState(std::function<void()> onChange = [](){});
+        std::shared_ptr<ESPClient> getESPClient(const std::string &ip);
 
-    void addClient(ClientInfo client, std::string ip);
-    void setClientName(const std::string& ip, int selected, const std::string& name);
-    void removeClientsByIp(const std::string& ip);
-    void clearAll();
-    bool hasClientWithName(const std::string& name);
-    void addResponse(const std::string& response);
+        bool isNewClient(const std::string &ip);
+        void addClient(Client &&client, const std::string &ip);
+        void updateClientPing(const std::string &ip);
 
-    const std::vector<std::string>& getResponses();
+        Client &getClient(const std::string &ip)
+        {
+            std::lock_guard lock(mutex);
+            return clients[ip];
+        }
 
-    // Response cache (manual invalidation only).
-    std::optional<std::string> getCached(const std::string& ip, const std::string& request);
-    void putCache(const std::string& ip, const std::string& request, const std::string& response);
-    void clearCacheForIp(const std::string& ip);
-    void clearCache();
+        // Run `fn` against the client for `ip` while holding the lock, so async
+        // updates (e.g. a describe response arriving on a worker thread) can
+        // mutate it without racing the heartbeat thread. No-op if ip is unknown.
+        template <typename F>
+        void withClient(const std::string &ip, F &&fn)
+        {
+            std::lock_guard lock(mutex);
+            auto it = clients.find(ip);
+            if (it != clients.end())
+                fn(it->second);
+        }
 
-    const std::shared_ptr<ClientInfo> getClientByIp(const std::string& ip);
-    // std::unique_ptr<ClientInfo> getClientByName(const std::string& name);
-    const ClientInfo& getClientByName(const std::string& name);
+        // Copy out (ip, Client) pairs under the lock for read-only iteration
+        // (listing, building a selection). Returns a snapshot so callers never
+        // hold references into the map while the heartbeat thread mutates it.
+        std::vector<std::pair<std::string, Client>> snapshot()
+        {
+            std::lock_guard lock(mutex);
+            return {clients.begin(), clients.end()};
+        }
 
-    const std::list<ClientInfo>& getClients();
-};
+        Utils::SafeQueue &getQueue()
+        {
+            std::lock_guard lock(queueMutex);
+            return queue;
+        };
+
+        // void addClient(ClientInfo client, std::string ip);
+        // void setClientName(const std::string& ip, int selected, const std::string& name);
+        // void removeClientsByIp(const std::string& ip);
+        // void clearAll();
+        // bool hasClientWithName(const std::string& name);
+        // void addResponse(const std::string& response);
+
+        // const std::vector<std::string>& getResponses();
+
+        // // Response cache (manual invalidation only).
+        // std::optional<std::string> getCached(const std::string& ip, const std::string& request);
+        // void putCache(const std::string& ip, const std::string& request, const std::string& response);
+        // void clearCacheForIp(const std::string& ip);
+        // void clearCache();
+
+        // const std::shared_ptr<ClientInfo> getClientByIp(const std::string& ip);
+        // // std::unique_ptr<ClientInfo> getClientByName(const std::string& name);
+        // const ClientInfo& getClientByName(const std::string& name);
+
+        // const std::list<ClientInfo>& getClients();
+    };
+}

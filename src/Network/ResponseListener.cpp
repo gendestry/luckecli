@@ -3,14 +3,17 @@
 //
 
 #include "ResponseListener.h"
+#include "SharedState.h"
+#include "Utils/SafeQueue.h"
+
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <mutex>
-#include "Utils/Logging/Logger.h"
-#include <nlohmann/json.hpp>
+#include <cstring>
+#include <cerrno>
 
 namespace Test::Network
 {

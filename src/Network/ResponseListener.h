@@ -1,16 +1,17 @@
 #pragma once
-#include <string>
 #include <atomic>
 #include <thread>
-#include <memory>
 #include <mutex>
 #include <condition_variable>
-#include <optional>
 
 #include "Diary/Log.h"
-#include "Test/SharedState.h"
 
 using namespace std::chrono_literals;
+
+namespace Test
+{
+    class SharedState; // referenced by reference only; full definition in the .cpp
+}
 
 namespace Test::Network
 {

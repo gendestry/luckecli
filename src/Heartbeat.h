@@ -3,27 +3,35 @@
 //
 
 #pragma once
-#include <memory>
 #include <thread>
+#include <atomic>
 
 #include "Diary/Log.h"
-#include "SharedState.h"
 
+namespace Test
+{
+    class SharedState; // referenced by reference only; full definition in the .cpp
 
-class Heartbeat {
-    std::atomic<bool> running_ingest{false};
-    bool inited = false;
-    std::thread ingest_thread;
+    class Heartbeat
+    {
+        std::atomic<bool> running_ingest{false};
+        bool inited = false;
+        std::thread ingest_thread;
 
-    Log logger;
-    SharedState& m_sharedState;
+        Log logger;
+        Test::SharedState &m_sharedState;
 
-    void start();
-    void packet_ingest();
+        void start();
+        void packet_ingest();
 
-public:
-    Heartbeat(SharedState& state);
-    ~Heartbeat();
+        // Fire an async "describe" at a freshly-added client and fold the reply
+        // back into its state when it arrives (off the ingest thread).
+        void requestDescribe(const std::string &ip);
 
-    void stop();
-};
+    public:
+        Heartbeat(Test::SharedState &state);
+        ~Heartbeat();
+
+        void stop();
+    };
+}
