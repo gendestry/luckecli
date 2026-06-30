@@ -48,8 +48,22 @@ namespace Test
     {
         running_ingest = false;
 
+        // The ingest thread is parked in a blocking recvfrom(); clearing the flag
+        // alone won't wake it (no packet arrives once devices stop pinging), so
+        // join() would hang the whole shutdown. Send a dummy datagram to our own
+        // bind port to unblock the recv and let the loop notice running_ingest.
         if (ingest_thread.joinable())
         {
+            int sock = socket(AF_INET, SOCK_DGRAM, 0);
+            if (sock >= 0)
+            {
+                sockaddr_in addr{};
+                addr.sin_family = AF_INET;
+                addr.sin_port = htons(12343);
+                inet_pton(AF_INET, "127.0.0.1", &addr.sin_addr);
+                sendto(sock, "", 0, 0, (sockaddr *)&addr, sizeof(addr));
+                close(sock);
+            }
             ingest_thread.join();
         }
     }
