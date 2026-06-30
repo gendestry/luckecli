@@ -54,6 +54,24 @@ namespace Test
             int cells;
         };
 
+        // An identity transform. libMVRgdtf's STransformMatrix is a plain aggregate,
+        // so a default `STransformMatrix()` zero-initialises EVERY field — including
+        // the ux/vy/wz diagonal — yielding a singular (all-zero) matrix. Written to
+        // GDTF that collapses every geometry/cell onto one degenerate point, and
+        // consoles (MagicQ) then can't build a cell layout, so the fixture imports
+        // with NO selectable sub-fixtures (can't fan colour). A real identity is
+        // required; `oy` offsets each cell along one axis so the pixels lay out in
+        // order (matching tested fixtures like Astera).
+        STransformMatrix identityMatrix(double oy = 0.0)
+        {
+            STransformMatrix m{}; // zero
+            m.ux = 1.0;
+            m.vy = 1.0;
+            m.wz = 1.0;
+            m.oy = oy;
+            return m;
+        }
+
         // Replace characters not safe in a file name with '_'.
         std::string sanitizeFileName(const std::string &s)
         {
@@ -173,21 +191,24 @@ namespace Test
                 IGdtfGeometryPtr cell;
                 const std::string cellName = "Cell " + spec.name;
                 if (!ok(gdtf->CreateGeometry(EGdtfObjectType::eGdtfGeometryLamp, cellName.c_str(),
-                                             nullptr, STransformMatrix(), &cell)))
+                                             nullptr, identityMatrix(), &cell)))
                     return {false, "CreateGeometry failed for " + cellName};
 
                 IGdtfGeometryPtr base;
                 const std::string baseName = "Base " + spec.name;
                 if (!ok(gdtf->CreateGeometry(EGdtfObjectType::eGdtfGeometry, baseName.c_str(),
-                                             nullptr, STransformMatrix(), &base)))
+                                             nullptr, identityMatrix(), &base)))
                     return {false, "CreateGeometry failed for " + baseName};
 
                 for (int i = 0; i < spec.cells; ++i)
                 {
                     IGdtfGeometryPtr ref;
                     const std::string refName = spec.name + " Pixel " + std::to_string(i + 1);
+                    // Step each cell along one axis (0.05 m apart) so the pixels lay
+                    // out in order — consoles use these positions to build the cell
+                    // matrix you fan colour across.
                     if (!ok(base->CreateGeometry(EGdtfObjectType::eGdtfGeometryReference, refName.c_str(),
-                                                 nullptr, STransformMatrix(), &ref)))
+                                                 nullptr, identityMatrix(i * 0.05), &ref)))
                         return {false, "CreateGeometry(reference) failed for " + refName};
                     ref->SetGeometryReference(cell);
                     IGdtfBreakPtr brk;
@@ -330,7 +351,7 @@ namespace Test
             MvrUUID fuuid(fnv1a(key, 0), fnv1a(key, 1), fnv1a(key, 2), fnv1a(key, 3));
 
             ISceneObjPtr fx;
-            if (!ok(mvr->CreateFixture(fuuid, STransformMatrix(), fname.c_str(), layer, &fx)))
+            if (!ok(mvr->CreateFixture(fuuid, identityMatrix(), fname.c_str(), layer, &fx)))
                 continue;
 
             fx->SetGdtfName(gdtfFileFor[i].c_str());
