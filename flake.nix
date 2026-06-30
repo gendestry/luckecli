@@ -22,6 +22,7 @@
             packages = with pkgs; [
               cmake
               ninja
+              ccache # caches compiles; speeds up clean/from-scratch rebuilds
               pkg-config
               git # submodules
               gdb # debugging (VS Code launch config)

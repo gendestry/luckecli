@@ -6,6 +6,15 @@ project(luckecli VERSION 1.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 
+# Use ccache as the compiler launcher when available, so clean/from-scratch
+# rebuilds of the rarely-changing submodule libs come from cache. Silently
+# falls back to the plain compiler if ccache isn't installed.
+find_program(CCACHE_PROGRAM ccache)
+if(CCACHE_PROGRAM)
+    set(CMAKE_CXX_COMPILER_LAUNCHER ${CCACHE_PROGRAM})
+    set(CMAKE_C_COMPILER_LAUNCHER ${CCACHE_PROGRAM})
+endif()
+
 add_subdirectory(lib/json)
 add_subdirectory(lib/Utils)
 add_subdirectory(lib/FTXUI)
@@ -18,7 +27,10 @@ set(BUILD_MVR_XCHANGE FALSE CACHE BOOL "" FORCE)
 set(UNITTEST FALSE CACHE BOOL "" FORCE)
 add_subdirectory(lib/libMVRgdtf)
 
-file(GLOB_RECURSE SOURCES src/*.cpp)
+# CONFIGURE_DEPENDS makes the build re-glob when files are added/moved/removed,
+# so the source list never goes stale (e.g. after a restructure) without a
+# manual reconfigure. Costs a cheap glob check on each build.
+file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS src/*.cpp)
 
 add_executable(${PROJECT_NAME} ${SOURCES})
 
