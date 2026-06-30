@@ -140,6 +140,11 @@ namespace Test::Commands
                        [this](const Args &a)
                        { return exportgdtf(a); });
 
+        m_registry.add("exportmvr", "Export all fixtures (with addresses) to a .mvr file", "exportmvr <path>?",
+                       Command::Usable::ANYTIME,
+                       [this](const Args &a)
+                       { return exportmvr(a); });
+
         m_registry.group("Device");
 
         m_registry.add("reboot", "Reboot the selected device(s)", "reboot",
@@ -754,6 +759,38 @@ namespace Test::Commands
         log.println("{}exported{} {} {}({} channels = {} RGB cells){}",
                     Theme::ok(), Theme::r(), path, Theme::dim(),
                     fix.footprint, fix.footprint / 3, Theme::r());
+        return true;
+    }
+
+    bool CommandExecutor::exportmvr(const Args &args)
+    {
+        // Gather every fixture across all devices from a state snapshot.
+        std::vector<Client::Fixture> fixtures;
+        for (const auto &[ip, c] : m_sharedState.snapshot())
+            for (const auto &f : c.fixtures)
+                fixtures.push_back(f);
+
+        if (fixtures.empty())
+        {
+            log.error("No fixtures to export");
+            return false;
+        }
+
+        // Path: explicit arg, else "scene.mvr" in the working directory. Hand
+        // libMVRgdtf an absolute path (see exportgdtf for why).
+        std::string path = args.has(1) ? args[1] : std::string("scene.mvr");
+        if (!path.ends_with(".mvr"))
+            path += ".mvr";
+        path = std::filesystem::absolute(path).string();
+
+        auto result = exportFixturesMvr(fixtures, path);
+        if (!result.ok)
+        {
+            log.error("MVR export failed: {}", result.error);
+            return false;
+        }
+        log.println("{}exported{} {} {}({} fixtures){}",
+                    Theme::ok(), Theme::r(), path, Theme::dim(), fixtures.size(), Theme::r());
         return true;
     }
 

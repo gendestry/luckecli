@@ -6,6 +6,8 @@
 #include <array>
 #include <cctype>
 #include <cstdint>
+#include <filesystem>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -51,36 +53,46 @@ namespace Test
             std::string name;
             int cells;
         };
+
+        // Replace characters not safe in a file name with '_'.
+        std::string sanitizeFileName(const std::string &s)
+        {
+            std::string out;
+            for (char c : s)
+                out += (std::isalnum(static_cast<unsigned char>(c)) || c == '-' || c == '_') ? c : '_';
+            return out.empty() ? "Fixture" : out;
+        }
     }
 
-    GdtfExportResult exportFixtureGdtf(const Client::Fixture &fix, const std::string &path)
+    std::string gdtfCurrentModeName(const Client::Fixture &fix)
     {
-        const int channels = fix.footprint;
-        if (channels <= 0 || channels % 3 != 0)
-            return {false, "footprint (" + std::to_string(channels) +
-                               ") is not a positive multiple of 3 — RGB-only export"};
-        const int curCells = channels / 3;
-
-        // One DMX mode per preset. We treat preset names as "group by N" factors
-        // and derive each mode's cell count from the current footprint: the current
-        // preset's factor tells us the base (group-by-1) pixel count, and every
-        // other preset divides that down. (The device's reported footprint doesn't
-        // vary per preset, so this is the best available derivation; a preset name
-        // without a number falls back to the current cell count.)
-        std::vector<ModeSpec> modes;
         if (fix.presets.empty())
+            return "RGB " + std::to_string(fix.footprint / 3) + "px";
+        int idx = std::clamp(fix.presetIndex, 0, static_cast<int>(fix.presets.size()) - 1);
+        return fix.presets[idx];
+    }
+
+    namespace
+    {
+        // The DMX modes for a fixture: one per preset (named by the preset), with a
+        // cell count derived from the "group by N" factor relative to the current
+        // footprint (the current preset's factor gives the base group-by-1 pixel
+        // count; others divide it down). No presets cached -> a single "RGB Npx".
+        std::vector<ModeSpec> computeModes(const Client::Fixture &fix)
         {
-            modes.push_back({"RGB " + std::to_string(curCells) + "px", curCells});
-        }
-        else
-        {
+            const int curCells = fix.footprint / 3;
+            std::vector<ModeSpec> modes;
+            if (fix.presets.empty())
+            {
+                modes.push_back({"RGB " + std::to_string(curCells) + "px", curCells});
+                return modes;
+            }
             int curN = 0;
             if (fix.presetIndex >= 0 && fix.presetIndex < static_cast<int>(fix.presets.size()))
                 curN = groupFactor(fix.presets[fix.presetIndex]);
             if (curN <= 0)
                 curN = 1;
-            const int basePixels = curCells * curN; // cells at "group by 1"
-
+            const int basePixels = curCells * curN;
             for (const auto &pname : fix.presets)
             {
                 const int n = groupFactor(pname);
@@ -89,80 +101,244 @@ namespace Test
                     cells = std::max(1, (basePixels + n / 2) / n); // rounded base/N
                 modes.push_back({pname, cells});
             }
+            return modes;
         }
 
-        IGdtfFixturePtr gdtf(IID_IGdtfFixture);
-
-        // Stable GUID derived from the fixture type.
-        MvrUUID uuid(fnv1a(fix.type, 0), fnv1a(fix.type, 1),
-                     fnv1a(fix.type, 2), fnv1a(fix.type, 3));
-
-        const std::string manufacturer = "luckecli";
-        std::string name = !fix.name.empty() ? fix.name : (!fix.type.empty() ? fix.type : "Fixture");
-
-        if (!ok(gdtf->OpenForWrite(path.c_str(), name.c_str(), manufacturer.c_str(), uuid)))
-            return {false, "OpenForWrite failed (cannot create " + path + ")"};
-
-        gdtf->SetShortName(name.substr(0, 8).c_str());
-        gdtf->SetFixtureTypeDescription(("Exported by luckecli (type=" + fix.type + ")").c_str());
-
-        // Color feature group + a single RGB feature shared by the three attributes.
-        IGdtfFeatureGroupPtr colorFG;
-        if (!ok(gdtf->CreateFeatureGroup("Color", "Color", &colorFG)))
-            return {false, "CreateFeatureGroup failed"};
-        IGdtfFeaturePtr rgbFeature;
-        if (!ok(colorFG->CreateFeature("RGB", &rgbFeature)))
-            return {false, "CreateFeature failed"};
-
-        // The three additive-color attributes (GDTF standard names).
-        const std::array<const char *, 3> attrName{"ColorAdd_R", "ColorAdd_G", "ColorAdd_B"};
-        const std::array<const char *, 3> attrPretty{"R", "G", "B"};
-        std::array<IGdtfAttributePtr, 3> attr;
-        for (int c = 0; c < 3; ++c)
+        // Write a GDTF file containing the given RGB modes. `gdtfName` is the
+        // FixtureType Name shown by consoles; `type` seeds the description;
+        // `guidSeed` seeds the FixtureTypeID (stable per whatever identity the
+        // caller wants — the type for a standalone export, the instance for MVR).
+        GdtfExportResult buildGdtfFile(const std::string &gdtfName, const std::string &type,
+                                       const std::string &guidSeed,
+                                       const std::vector<ModeSpec> &modes, const std::string &path)
         {
-            if (!ok(gdtf->CreateAttribute(attrName[c], attrPretty[c], &attr[c])))
-                return {false, std::string("CreateAttribute failed for ") + attrName[c]};
-            attr[c]->SetFeature(rgbFeature);
-        }
+            IGdtfFixturePtr gdtf(IID_IGdtfFixture);
 
-        // One geometry the whole mode hangs off of.
-        IGdtfGeometryPtr geo;
-        if (!ok(gdtf->CreateGeometry(EGdtfObjectType::eGdtfGeometry, "Beam", nullptr,
-                                     STransformMatrix(), &geo)))
-            return {false, "CreateGeometry failed"};
+            MvrUUID uuid(fnv1a(guidSeed, 0), fnv1a(guidSeed, 1), fnv1a(guidSeed, 2), fnv1a(guidSeed, 3));
+            const std::string manufacturer = "luckecli";
+            const std::string name = !gdtfName.empty() ? gdtfName : (!type.empty() ? type : "Fixture");
 
-        // One DMX mode per preset: `cells` RGB cells laid out R,G,B per cell.
-        for (const auto &spec : modes)
-        {
-            IGdtfDmxModePtr mode;
-            if (!ok(gdtf->CreateDmxMode(spec.name.c_str(), &mode)))
-                return {false, "CreateDmxMode failed for " + spec.name};
-            mode->SetGeometry(geo);
+            if (!ok(gdtf->OpenForWrite(path.c_str(), name.c_str(), manufacturer.c_str(), uuid)))
+                return {false, "OpenForWrite failed (cannot create " + path + ")"};
 
-            for (int i = 0; i < spec.cells; ++i)
+            gdtf->SetShortName(name.substr(0, 8).c_str());
+            gdtf->SetFixtureTypeDescription(("Exported by luckecli (type=" + type + ")").c_str());
+
+            // Color feature group + a single RGB feature shared by the attributes.
+            IGdtfFeatureGroupPtr colorFG;
+            if (!ok(gdtf->CreateFeatureGroup("Color", "Color", &colorFG)))
+                return {false, "CreateFeatureGroup failed"};
+            IGdtfFeaturePtr rgbFeature;
+            if (!ok(colorFG->CreateFeature("RGB", &rgbFeature)))
+                return {false, "CreateFeature failed"};
+
+            // Attribute Name stays the GDTF standard (so consoles recognise the
+            // colour); Pretty is the friendly label shown in the patch.
+            const std::array<const char *, 3> attrName{"ColorAdd_R", "ColorAdd_G", "ColorAdd_B"};
+            const std::array<const char *, 3> attrPretty{"Red", "Green", "Blue"};
+            std::array<IGdtfAttributePtr, 3> attr;
+            for (int c = 0; c < 3; ++c)
             {
-                for (int c = 0; c < 3; ++c)
+                if (!ok(gdtf->CreateAttribute(attrName[c], attrPretty[c], &attr[c])))
+                    return {false, std::string("CreateAttribute failed for ") + attrName[c]};
+                attr[c]->SetFeature(rgbFeature);
+            }
+
+            // Physical emitters (CIE 1931 xyY, sRGB primaries) so consoles know the
+            // real colours, render them, and can build colour palettes. Linking the
+            // colour functions to these makes MagicQ treat the fixture as additive
+            // colour (Colour Mix) — which is what drives its intensity/colour.
+            const std::array<CieColor, 3> emitColor{{{0.6400, 0.3300, 21.26},
+                                                     {0.3000, 0.6000, 71.52},
+                                                     {0.1500, 0.0600, 7.22}}};
+            const std::array<const char *, 3> emitName{"Red", "Green", "Blue"};
+            std::array<IGdtfPhysicalEmitterPtr, 3> emitter;
+            for (int c = 0; c < 3; ++c)
+                gdtf->CreateEmitter(emitName[c], emitColor[c], &emitter[c]);
+
+            // NOTE: intentionally NO dimmer/intensity channel. The device is RGB
+            // only, and MagicQ only auto-adds its per-element Virtual Dimmer to a
+            // head that has NO intensity channel (Head Editor > Virtual Dim = yes).
+            // A GDTF dimmer (even virtual) suppresses that, so we leave it out.
+
+            // A pixel fixture must expose one geometry PER cell, or consoles can't
+            // tell the repeated ColorAdd_R/G/B apart (they bind one set and leave
+            // the rest raw). So build a "Body" with one "Pixel N" child per cell,
+            // up to the largest mode; each mode's channels hang off their pixel.
+            int maxCells = 0;
+            for (const auto &m : modes)
+                maxCells = std::max(maxCells, m.cells);
+
+            IGdtfGeometryPtr body;
+            if (!ok(gdtf->CreateGeometry(EGdtfObjectType::eGdtfGeometry, "Body", nullptr,
+                                         STransformMatrix(), &body)))
+                return {false, "CreateGeometry failed"};
+
+            std::vector<IGdtfGeometryPtr> pixel(maxCells);
+            for (int i = 0; i < maxCells; ++i)
+            {
+                const std::string pname = "Pixel " + std::to_string(i + 1);
+                if (!ok(body->CreateGeometry(EGdtfObjectType::eGdtfGeometry, pname.c_str(), nullptr,
+                                             STransformMatrix(), &pixel[i])))
+                    return {false, "CreateGeometry failed for " + pname};
+            }
+
+            for (const auto &spec : modes)
+            {
+                IGdtfDmxModePtr mode;
+                if (!ok(gdtf->CreateDmxMode(spec.name.c_str(), &mode)))
+                    return {false, "CreateDmxMode failed for " + spec.name};
+                mode->SetGeometry(body);
+
+                for (int i = 0; i < spec.cells; ++i)
                 {
-                    IGdtfDmxChannelPtr ch;
-                    if (!ok(mode->CreateDmxChannel(geo, &ch)))
-                        return {false, "CreateDmxChannel failed"};
-                    ch->SetGeometry(geo);
-                    ch->SetCoarse(i * 3 + c + 1); // 1-based DMX offset
+                    for (int c = 0; c < 3; ++c)
+                    {
+                        IGdtfDmxChannelPtr ch;
+                        if (!ok(mode->CreateDmxChannel(pixel[i], &ch)))
+                            return {false, "CreateDmxChannel failed"};
+                        ch->SetGeometry(pixel[i]);
+                        ch->SetCoarse(i * 3 + c + 1); // 1-based DMX offset
 
-                    IGdtfDmxLogicalChannelPtr lch;
-                    if (!ok(ch->CreateLogicalChannel(attr[c], &lch)))
-                        return {false, "CreateLogicalChannel failed"};
+                        IGdtfDmxLogicalChannelPtr lch;
+                        if (!ok(ch->CreateLogicalChannel(attr[c], &lch)))
+                            return {false, "CreateLogicalChannel failed"};
 
-                    IGdtfDmxChannelFunctionPtr fn;
-                    const std::string fnName = std::string(attrName[c]) + " " + std::to_string(i + 1);
-                    if (!ok(lch->CreateDmxFunction(fnName.c_str(), &fn)))
-                        return {false, "CreateDmxFunction failed"};
-                    fn->SetAttribute(attr[c]);
+                        IGdtfDmxChannelFunctionPtr fn;
+                        if (!ok(lch->CreateDmxFunction(attrPretty[c], &fn)))
+                            return {false, "CreateDmxFunction failed"};
+                        fn->SetAttribute(attr[c]);
+                        fn->SetDefaultValue(0); // start dark (not full-on)
+                        if (emitter[c])
+                            fn->SetEmitter(emitter[c]); // real colour
+                    }
                 }
             }
+
+            if (!ok(gdtf->Close()))
+                return {false, "Close/write failed"};
+            return {true, ""};
+        }
+    }
+
+    GdtfExportResult exportFixtureGdtf(const Client::Fixture &fix, const std::string &path)
+    {
+        if (fix.footprint <= 0 || fix.footprint % 3 != 0)
+            return {false, "footprint (" + std::to_string(fix.footprint) +
+                               ") is not a positive multiple of 3 — RGB-only export"};
+        const std::string name = !fix.name.empty() ? fix.name : (!fix.type.empty() ? fix.type : "Fixture");
+        return buildGdtfFile(name, fix.type, fix.type, computeModes(fix), path);
+    }
+
+    GdtfExportResult exportFixturesMvr(const std::vector<Client::Fixture> &fixtures,
+                                       const std::string &path)
+    {
+        namespace fs = std::filesystem;
+        if (fixtures.empty())
+            return {false, "no fixtures to export"};
+
+        // Drop fixtures we can't represent as RGB (footprint unknown/0 because they
+        // haven't been described yet, or not a multiple of 3) — keeping them would
+        // emit empty/odd modes that importers reject.
+        std::vector<Client::Fixture> valid;
+        for (const auto &f : fixtures)
+            if (f.footprint > 0 && f.footprint % 3 == 0)
+                valid.push_back(f);
+        if (valid.empty())
+            return {false, "no fixtures with a usable RGB footprint (describe them first?)"};
+
+        std::error_code ec;
+        const fs::path tmp = fs::temp_directory_path() / "luckecli-mvr";
+        fs::create_directories(tmp, ec);
+
+        // Stage one GDTF per fixture, named after the instance — consoles (MagicQ)
+        // show the GDTF's FixtureType Name as the patch name, so this is what makes
+        // each head carry its own fixture name. Each per-fixture GDTF holds exactly
+        // that fixture's modes, so its referenced GDTFMode always resolves.
+        std::vector<std::string> gdtfFileFor(valid.size()); // parallel to `valid`
+        std::vector<fs::path> staged;
+        std::map<std::string, int> usedNames; // base name -> count, for de-duping files
+        for (std::size_t i = 0; i < valid.size(); ++i)
+        {
+            const auto &f = valid[i];
+            const std::string gname = !f.name.empty() ? f.name : (!f.type.empty() ? f.type : "Fixture");
+            std::string base = sanitizeFileName(gname);
+            if (int &n = usedNames[base]; ++n > 1)
+                base += "_" + std::to_string(n); // disambiguate duplicate names
+            const std::string gfile = base + ".gdtf";
+            const fs::path gpath = tmp / gfile;
+
+            // GUID seed unique per fixture so distinct heads don't share a type id.
+            const std::string seed = gname + "|" + f.type + "|" + std::to_string(i);
+            auto r = buildGdtfFile(gname, f.type, seed, computeModes(f), gpath.string());
+            if (!r.ok)
+            {
+                for (const auto &p : staged)
+                    fs::remove(p, ec);
+                return {false, "GDTF for '" + gname + "': " + r.error};
+            }
+            gdtfFileFor[i] = gfile;
+            staged.push_back(gpath);
         }
 
-        if (!ok(gdtf->Close()))
+        auto cleanup = [&]
+        {
+            for (const auto &p : staged)
+                fs::remove(p, ec);
+            fs::remove(tmp, ec);
+        };
+
+        IMediaRessourceVectorInterfacePtr mvr(IID_MediaRessourceVectorInterface);
+        if (!ok(mvr->OpenForWrite(path.c_str())))
+        {
+            cleanup();
+            return {false, "OpenForWrite failed (cannot create " + path + ")"};
+        }
+        mvr->AddProviderAndProviderVersion("luckecli", "1.0");
+
+        // Point the lib at the staged GDTFs so CreateFixture can resolve each
+        // fixture's type internally, then embed them under their base names.
+        mvr->AddGdtfFolderLocation(tmp.string().c_str());
+        for (const auto &p : staged)
+            mvr->AddFileToMvrFile(p.string().c_str());
+
+        ISceneObjPtr layer;
+        if (!ok(mvr->CreateLayerObject(MvrUUID(fnv1a("layer", 0), fnv1a("layer", 1),
+                                               fnv1a("layer", 2), fnv1a("layer", 3)),
+                                       "luckecli", &layer)))
+        {
+            cleanup();
+            return {false, "CreateLayerObject failed"};
+        }
+
+        for (std::size_t i = 0; i < valid.size(); ++i)
+        {
+            const auto &f = valid[i];
+            const std::string fname = !f.name.empty() ? f.name : (!f.type.empty() ? f.type : "Fixture");
+            // Per-instance UUID: stable from type/name/address plus the index so
+            // two identically-configured fixtures still get distinct GUIDs.
+            const std::string key = f.type + "|" + f.name + "|" + std::to_string(f.universe) +
+                                    "|" + std::to_string(f.address) + "|" + std::to_string(i);
+            MvrUUID fuuid(fnv1a(key, 0), fnv1a(key, 1), fnv1a(key, 2), fnv1a(key, 3));
+
+            ISceneObjPtr fx;
+            if (!ok(mvr->CreateFixture(fuuid, STransformMatrix(), fname.c_str(), layer, &fx)))
+                continue;
+
+            fx->SetGdtfName(gdtfFileFor[i].c_str());
+            fx->SetGdtfMode(gdtfCurrentModeName(f).c_str());
+            // Absolute DMX address. MVR/consoles use 1-based addressing: universe N
+            // occupies [(N-1)*512+1 .. N*512]. The device reports a 0-based channel
+            // (addr 0 == first channel), so add 1.
+            const int uni = f.universe > 0 ? f.universe : 1;
+            const std::size_t absAddr = static_cast<std::size_t>(uni - 1) * 512 + f.address + 1;
+            fx->AddAdress(absAddr, 0); // single DMX break (id 0)
+            fx->SetFixtureIdNumeric(i + 1);
+        }
+
+        const bool wrote = ok(mvr->Close());
+        cleanup();
+        if (!wrote)
             return {false, "Close/write failed"};
         return {true, ""};
     }

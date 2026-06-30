@@ -63,6 +63,7 @@ namespace Test::Commands
         bool presets(const Args &);
         bool outputs(const Args &);
         bool exportgdtf(const Args &);
+        bool exportmvr(const Args &);
 
         // GET/SET a boolean engine task (wifianimation/serialprint/wirelessprint).
         // `field` is the firmware request name; `cache` is the matching cached
