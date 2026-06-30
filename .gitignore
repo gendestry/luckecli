@@ -1,12 +1,8 @@
-cmake_build_debug/
 .idea/
-./vscode
-build/
-analysis
 .vscode/
+build/
+build-nix/
+analysis
 old/
-.devcontainer/
 vcpkg_installed/
 .dockerignore
-Dockerfile
-build-nix/

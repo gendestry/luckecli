@@ -69,6 +69,9 @@ public:
     }
 
     static void setGlobalCallback(std::function<void(const Loggable&)> callback = [](const Loggable&){}) {
+        // Lock so the swap can't race with append() invoking the callback — lets
+        // shutdown reset this to a no-op before the bound display is destroyed.
+        std::lock_guard lock(logMutex);
         s_onChangeCallback = std::move(callback);
     }
 

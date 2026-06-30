@@ -73,7 +73,7 @@ namespace Test
         nameOpt.multiline = false;
         nameOpt.transform = editBox;
         nameOpt.on_enter = [this]
-        { if (m_onCommand && !m_name.empty()) m_onCommand("setname " + m_name); };
+        { applyEdits(); };
         m_nameInput = Input(nameOpt);
 
         // Universe / address are numeric — swallow non-digit characters so the
@@ -96,9 +96,27 @@ namespace Test
         };
 
         m_universeInput = numericInput(&m_universe, [this]
-                                       { if (m_onCommand && !m_universe.empty()) m_onCommand("setuniverse " + m_universe); });
+                                       { applyEdits(); });
         m_addressInput = numericInput(&m_address, [this]
-                                      { if (m_onCommand && !m_address.empty()) m_onCommand("setaddress " + m_address); });
+                                      { applyEdits(); });
+
+        // Apply / revert: glyph buttons (no text). Apply commits edited fields;
+        // revert resets them to the last-known committed values.
+        auto iconBtn = [](const std::string &glyph, Color c, std::function<void()> cb)
+        {
+            auto opt = ButtonOption::Simple();
+            opt.on_click = std::move(cb);
+            opt.transform = [glyph, c](const EntryState &s)
+            {
+                auto e = text(" " + glyph + " ") | color(c);
+                if (s.focused)
+                    e = e | bgcolor(Color::RGB(40, 40, 55)) | bold;
+                return e;
+            };
+            return Button(opt);
+        };
+        m_applyBtn = iconBtn("✓", Color::RGB(90, 200, 110), [this] { applyEdits(); });   // ✔ check
+        m_revertBtn = iconBtn("↻", Color::RGB(220, 160, 90), [this] { revertEdits(); }); // ↺ undo
 
         // Engine toggles commit on change. sync() only writes the bound bools
         // (which doesn't fire on_change), so toggling here always reflects a real
@@ -121,9 +139,44 @@ namespace Test
             m_nameInput,
             m_universeInput,
             m_addressInput,
+            Container::Horizontal({m_applyBtn, m_revertBtn}),
             m_serialBox,
             m_wirelessBox,
         });
+    }
+
+    void InfoPanel::applyEdits()
+    {
+        if (!m_onCommand)
+            return;
+        if (!m_name.empty() && m_name != m_baseName)
+            m_onCommand("setname " + m_name);
+        if (!m_universe.empty() && m_universe != m_baseUniverse)
+            m_onCommand("setuniverse " + m_universe);
+        if (!m_address.empty() && m_address != m_baseAddress)
+            m_onCommand("setaddress " + m_address);
+
+        // Adopt the typed values; the command handler patches the cache and sync()
+        // will keep mirroring it from here.
+        m_baseName = m_name;
+        m_baseUniverse = m_universe;
+        m_baseAddress = m_address;
+    }
+
+    void InfoPanel::revertEdits()
+    {
+        m_name = m_baseName;
+        m_universe = m_baseUniverse;
+        m_address = m_baseAddress;
+    }
+
+    void InfoPanel::scroll(int delta)
+    {
+        m_scroll += static_cast<float>(delta) * 0.1f;
+        if (m_scroll < 0.f)
+            m_scroll = 0.f;
+        if (m_scroll > 1.f)
+            m_scroll = 1.f;
     }
 
     void InfoPanel::sync()
@@ -161,25 +214,30 @@ namespace Test
             return;
 
         const auto &fx = client->fixtures[sel.fixtureId];
-        m_name = fx.name;
-        m_universe = std::to_string(fx.universe);
-        m_address = std::to_string(fx.address);
+        m_name = m_baseName = fx.name;
+        m_universe = m_baseUniverse = std::to_string(fx.universe);
+        m_address = m_baseAddress = std::to_string(fx.address);
         m_ip = sel.ip;
         m_fixtureId = sel.fixtureId;
     }
 
     Element InfoPanel::render() const
     {
+        // Clip to the available height and scroll with m_scroll / focus, so long
+        // listings (many selected fixtures) don't overflow the panel.
+        auto scrolled = [this](Element e)
+        { return std::move(e) | focusPositionRelative(0.f, m_scroll) | yframe | vscroll_indicator; };
+
         if (!m_active || !m_exec)
-            return infoListing(m_state, m_exec ? m_exec->selection()
-                                               : std::vector<Commands::CommandExecutor::Selection>{});
+            return scrolled(infoListing(m_state, m_exec ? m_exec->selection()
+                                                        : std::vector<Commands::CommandExecutor::Selection>{}));
 
         const auto &sel = m_exec->selection().front();
         const auto clients = m_state.snapshot();
         const Client *client = findClient(clients, sel.ip);
         if (!client || sel.fixtureId < 0 ||
             sel.fixtureId >= static_cast<int>(client->fixtures.size()))
-            return infoListing(m_state, m_exec->selection());
+            return scrolled(infoListing(m_state, m_exec->selection()));
 
         const auto &fx = client->fixtures[sel.fixtureId];
 
@@ -201,13 +259,25 @@ namespace Test
         rows.push_back(editRow("  address   ", m_addressInput));
         rows.push_back(hbox({label("  footprint "), value(std::to_string(fx.footprint))}));
 
+        // Apply / revert. Highlighted while there are uncommitted edits.
+        const bool dirty = m_name != m_baseName || m_universe != m_baseUniverse ||
+                           m_address != m_baseAddress;
+        rows.push_back(hbox({
+            text("  "),
+            m_applyBtn->Render(),
+            text("  "),
+            m_revertBtn->Render(),
+            filler(),
+            text(dirty ? "edited " : "") | color(Color::RGB(220, 160, 90)),
+        }));
+
         // Engine section.
         rows.push_back(text(""));
         rows.push_back(label("  engine"));
         rows.push_back(hbox({text("  "), m_serialBox->Render()}));
         rows.push_back(hbox({text("  "), m_wirelessBox->Render()}));
 
-        return vbox(std::move(rows));
+        return scrolled(vbox(std::move(rows)));
     }
 
     Element infoListing(SharedState &state,

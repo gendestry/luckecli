@@ -44,6 +44,9 @@ namespace Test
         // The info section element (editable form, read-only listing, or empty).
         ftxui::Element render() const;
 
+        // Scroll the panel content. Positive scrolls down; clamped to [0,1].
+        void scroll(int delta);
+
         // Runs a shell-style command string (same sink as the REPL).
         void setOnCommand(std::function<void(const std::string &)> fn) { m_onCommand = std::move(fn); }
 
@@ -54,9 +57,20 @@ namespace Test
         ftxui::Component m_container;
         ftxui::Component m_nameInput, m_universeInput, m_addressInput;
         ftxui::Component m_serialBox, m_wirelessBox;
+        ftxui::Component m_applyBtn, m_revertBtn;
+
+        // Send any edited fields (name/universe/address) as commands, then adopt
+        // the typed values as the new baseline. Reset the fields to the baseline.
+        void applyEdits();
+        void revertEdits();
 
         // Backing storage referenced by the components (UI thread only).
         std::string m_name, m_universe, m_address;
+        // Last-known committed values, used to detect edits and to revert to.
+        std::string m_baseName, m_baseUniverse, m_baseAddress;
+
+        // Relative scroll position of the panel content, in [0,1].
+        float m_scroll = 0.f;
         bool m_serial = false;
         bool m_wireless = false;
 

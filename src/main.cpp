@@ -49,6 +49,11 @@ int main(int argc, char **argv)
     Test::Commands::CommandExecutor exec(state, *display);
     exec.run();
 
+    // Detach the log sink from `display` before teardown: background worker
+    // threads (still draining describe responses) log through this callback, and
+    // `display` is destroyed below — without this they'd call into freed memory.
+    Log::setGlobalCallback();
+
     listener.stop();
 
     return 0;

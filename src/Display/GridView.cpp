@@ -169,7 +169,13 @@ namespace Test
             // (runs before the cards handle the click). Either modifier works,
             // since terminals vary in which one they forward.
             if (event.is_mouse())
+            {
                 m_modifier = event.mouse().shift || event.mouse().control;
+
+                // Mouse wheel scrolls the info panel content.
+                if (event.mouse().button == Mouse::WheelUp) { m_info.scroll(-1); return true; }
+                if (event.mouse().button == Mouse::WheelDown) { m_info.scroll(1); return true; }
+            }
 
             // Universe popup: 'u' toggles it; while open, Escape just closes it.
             if (event == Event::Character('u') && m_exec && m_exec->isSelected())

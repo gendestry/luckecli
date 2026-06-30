@@ -13,7 +13,14 @@ namespace Test
         // log.setLocalLevel(Loggable::DEBUG);
     }
 
-    SharedState::~SharedState() = default;
+    SharedState::~SharedState()
+    {
+        // Destroy the ESPClients first — each ~ESPClient joins its worker thread.
+        // Workers touch our other members (the response queue, client map) via the
+        // back-reference, so they must all be stopped while those are still alive;
+        // otherwise a worker mid-request races member destruction (use-after-free).
+        connections.clear();
+    }
 
     std::shared_ptr<ESPClient> SharedState::getESPClient(const std::string &ip)
     {

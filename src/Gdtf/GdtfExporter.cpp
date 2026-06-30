@@ -156,62 +156,70 @@ namespace Test
             for (int c = 0; c < 3; ++c)
                 gdtf->CreateEmitter(emitName[c], emitColor[c], &emitter[c]);
 
-            // NOTE: intentionally NO dimmer/intensity channel. The device is RGB
-            // only, and MagicQ only auto-adds its per-element Virtual Dimmer to a
+            // No dimmer/intensity channel: the device is RGB-only, and MagicQ
+            // only auto-patches its working per-RGB-element Virtual Dimmer to a
             // head that has NO intensity channel (Head Editor > Virtual Dim = yes).
-            // A GDTF dimmer (even virtual) suppresses that, so we leave it out.
+            // A GDTF (virtual) dimmer can't be driven by MagicQ and suppresses that
+            // auto-VDim, so we deliberately leave it out.
 
-            // A pixel fixture must expose one geometry PER cell, or consoles can't
-            // tell the repeated ColorAdd_R/G/B apart (they bind one set and leave
-            // the rest raw). So build a "Body" with one "Pixel N" child per cell,
-            // up to the largest mode; each mode's channels hang off their pixel.
-            int maxCells = 0;
-            for (const auto &m : modes)
-                maxCells = std::max(maxCells, m.cells);
-
-            IGdtfGeometryPtr body;
-            if (!ok(gdtf->CreateGeometry(EGdtfObjectType::eGdtfGeometry, "Body", nullptr,
-                                         STransformMatrix(), &body)))
-                return {false, "CreateGeometry failed"};
-
-            std::vector<IGdtfGeometryPtr> pixel(maxCells);
-            for (int i = 0; i < maxCells; ++i)
-            {
-                const std::string pname = "Pixel " + std::to_string(i + 1);
-                if (!ok(body->CreateGeometry(EGdtfObjectType::eGdtfGeometry, pname.c_str(), nullptr,
-                                             STransformMatrix(), &pixel[i])))
-                    return {false, "CreateGeometry failed for " + pname};
-            }
-
+            // Pixel-matrix layout (the structure tested fixtures use — e.g. Astera):
+            // per mode, a "Base" geometry holds one GeometryReference per cell, each
+            // with a DMX Break giving that cell's start address, all referencing a
+            // shared "Cell" Beam. The mode's channels are defined ONCE on that Cell
+            // Beam (relative offsets) and the references replicate them per pixel —
+            // this is what makes consoles expose real per-pixel control.
             for (const auto &spec : modes)
             {
-                IGdtfDmxModePtr mode;
-                if (!ok(gdtf->CreateDmxMode(spec.name.c_str(), &mode)))
-                    return {false, "CreateDmxMode failed for " + spec.name};
-                mode->SetGeometry(body);
+                IGdtfGeometryPtr cell;
+                const std::string cellName = "Cell " + spec.name;
+                if (!ok(gdtf->CreateGeometry(EGdtfObjectType::eGdtfGeometryLamp, cellName.c_str(),
+                                             nullptr, STransformMatrix(), &cell)))
+                    return {false, "CreateGeometry failed for " + cellName};
+
+                IGdtfGeometryPtr base;
+                const std::string baseName = "Base " + spec.name;
+                if (!ok(gdtf->CreateGeometry(EGdtfObjectType::eGdtfGeometry, baseName.c_str(),
+                                             nullptr, STransformMatrix(), &base)))
+                    return {false, "CreateGeometry failed for " + baseName};
 
                 for (int i = 0; i < spec.cells; ++i)
                 {
-                    for (int c = 0; c < 3; ++c)
-                    {
-                        IGdtfDmxChannelPtr ch;
-                        if (!ok(mode->CreateDmxChannel(pixel[i], &ch)))
-                            return {false, "CreateDmxChannel failed"};
-                        ch->SetGeometry(pixel[i]);
-                        ch->SetCoarse(i * 3 + c + 1); // 1-based DMX offset
+                    IGdtfGeometryPtr ref;
+                    const std::string refName = spec.name + " Pixel " + std::to_string(i + 1);
+                    if (!ok(base->CreateGeometry(EGdtfObjectType::eGdtfGeometryReference, refName.c_str(),
+                                                 nullptr, STransformMatrix(), &ref)))
+                        return {false, "CreateGeometry(reference) failed for " + refName};
+                    ref->SetGeometryReference(cell);
+                    IGdtfBreakPtr brk;
+                    ref->CreateBreak(1, i * 3 + 1, &brk); // break 1, 1-based start address
+                }
 
-                        IGdtfDmxLogicalChannelPtr lch;
-                        if (!ok(ch->CreateLogicalChannel(attr[c], &lch)))
-                            return {false, "CreateLogicalChannel failed"};
+                IGdtfDmxModePtr mode;
+                if (!ok(gdtf->CreateDmxMode(spec.name.c_str(), &mode)))
+                    return {false, "CreateDmxMode failed for " + spec.name};
+                mode->SetGeometry(base);
 
-                        IGdtfDmxChannelFunctionPtr fn;
-                        if (!ok(lch->CreateDmxFunction(attrPretty[c], &fn)))
-                            return {false, "CreateDmxFunction failed"};
-                        fn->SetAttribute(attr[c]);
-                        fn->SetDefaultValue(0); // start dark (not full-on)
-                        if (emitter[c])
-                            fn->SetEmitter(emitter[c]); // real colour
-                    }
+                // R/G/B at offsets 1,2,3 RELATIVE to the cell (the references shift
+                // them per pixel via their breaks). Defined once, not per pixel.
+                for (int c = 0; c < 3; ++c)
+                {
+                    IGdtfDmxChannelPtr ch;
+                    if (!ok(mode->CreateDmxChannel(cell, &ch)))
+                        return {false, "CreateDmxChannel failed"};
+                    ch->SetGeometry(cell);
+                    ch->SetCoarse(c + 1); // relative offset within the cell
+
+                    IGdtfDmxLogicalChannelPtr lch;
+                    if (!ok(ch->CreateLogicalChannel(attr[c], &lch)))
+                        return {false, "CreateLogicalChannel failed"};
+
+                    IGdtfDmxChannelFunctionPtr fn;
+                    if (!ok(lch->CreateDmxFunction(attrPretty[c], &fn)))
+                        return {false, "CreateDmxFunction failed"};
+                    fn->SetAttribute(attr[c]);
+                    fn->SetDefaultValue(0); // start dark (not full-on)
+                    if (emitter[c])
+                        fn->SetEmitter(emitter[c]); // real colour
                 }
             }
 
