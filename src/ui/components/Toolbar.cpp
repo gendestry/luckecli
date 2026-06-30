@@ -18,6 +18,7 @@ namespace ui
             const std::string label = item.label;
             auto enabled = item.enabled;       // copied into the closures below
             auto active = item.active;
+            auto labelFn = item.labelFn;
             auto action = std::move(item.onClick);
 
             auto opt = ButtonOption::Simple();
@@ -35,7 +36,8 @@ namespace ui
                                  : lit       ? Color::RGB(90, 200, 110)   // toggled on
                                  : s.focused ? Color::RGB(190, 160, 230)  // focused
                                              : Color::RGB(180, 180, 190); // idle
-                auto e = text(" " + std::string(lit ? "● " : "") + label + " ") | color(fg);
+                const std::string txt = labelFn ? labelFn() : label;
+                auto e = text(" " + std::string(lit ? "● " : "") + txt + " ") | color(fg);
                 if (lit)
                     e = e | bold;
                 if (s.focused && on)

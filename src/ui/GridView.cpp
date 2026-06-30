@@ -98,6 +98,19 @@ namespace ui
             {"Clear", [this] { if (m_busy) return; if (m_exec) m_exec->clearSelection(); if (m_refresh) m_refresh(); }, hasSelection, nullptr},
             {"Identify", [&onCommand, this] { onCommand("highlight"); if (m_refresh) m_refresh(); }, singleSelection, nullptr},
             {"Reboot", [&onCommand, this] { onCommand("reboot"); if (m_refresh) m_refresh(); }, hasSelection, nullptr},
+            // Factory reset is destructive: first click arms (button turns into
+            // "Confirm reset?" and lights up), second click fires. Clicking it
+            // when disarmed never wipes anything.
+            {"Reset",
+             [&onCommand, this] {
+                 if (!m_armReset) { m_armReset = true; return; }
+                 onCommand("factoryreset confirm");
+                 m_armReset = false;
+                 if (m_refresh) m_refresh();
+             },
+             hasSelection,
+             [this] { return m_armReset; },
+             [this] { return m_armReset ? std::string("Confirm reset?") : std::string("Reset"); }},
             {"Universe", [this] { m_showUniverse = !m_showUniverse; }, hasSelection,
              [this] { return m_showUniverse; }},
             {"Exit", [&onCommand, this] { onCommand("exit"); requestExit(); }, nullptr, nullptr},

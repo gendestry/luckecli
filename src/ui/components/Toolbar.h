@@ -15,8 +15,9 @@ namespace ui
     {
         std::string label;
         std::function<void()> onClick;
-        std::function<bool()> enabled; // null == always enabled
-        std::function<bool()> active;  // null == plain button; else a toggle, lit when true
+        std::function<bool()> enabled;          // null == always enabled
+        std::function<bool()> active;           // null == plain button; else a toggle, lit when true
+        std::function<std::string()> labelFn;   // null == use `label`; else a live label (re-read each frame)
     };
 
     // A horizontal row of action buttons. The returned component owns focus

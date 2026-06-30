@@ -58,6 +58,7 @@ namespace core::commands
         bool setname(const Args &);
         bool highlight(const Args &);
         bool reboot(const Args &);
+        bool factoryreset(const Args &);
         bool setwifi(const Args &);
         bool describe(const Args &);
         bool presets(const Args &);

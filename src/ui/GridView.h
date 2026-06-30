@@ -42,6 +42,7 @@ namespace ui
         bool m_modifier = false;                               // ctrl/shift held on the last mouse event
         bool m_multiMode = false;                              // sticky multi-select toggle (every click adds)
         bool m_showUniverse = false;                           // universe-viewer popup open?
+        bool m_armReset = false;                               // factory-reset button armed (2-click confirm)
     };
 
 }

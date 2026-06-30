@@ -131,6 +131,11 @@ void CommandExecutor::bindCommands() {
                  Command::Usable::SELECTED,
                  [this](const Args &a) { return reboot(a); });
 
+  m_registry.add("factoryreset",
+                 "Factory-reset the selected device(s) — wipes all config",
+                 "factoryreset confirm", Command::Usable::SELECTED,
+                 [this](const Args &a) { return factoryreset(a); });
+
   m_registry.add("setwifi", "Set WiFi credentials on the selected device",
                  "setwifi ssid <value> pass <value>", Command::Usable::SELECTED,
                  [this](const Args &a) { return setwifi(a); });
@@ -442,6 +447,36 @@ bool CommandExecutor::reboot(const Args &) {
   }
 
   // The selection points at devices that are now going away.
+  m_selection.clear();
+  return true;
+}
+
+bool CommandExecutor::factoryreset(const Args &args) {
+  auto ips = selectedIps();
+  if (ips.empty()) {
+    log.error("Nothing selected");
+    return false;
+  }
+
+  // Destructive and irreversible — wipes wifi creds, fixtures and engine
+  // settings. Require an explicit confirmation token so it can't fire from a
+  // stray keystroke or a recalled history line.
+  if (args[1] != "confirm") {
+    log.error("factoryreset wipes ALL config on {} device(s). Re-run as "
+              "'factoryreset confirm' to proceed.",
+              ips.size());
+    return false;
+  }
+
+  // Like reboot, the device resets and won't reply, so a missing response is
+  // expected — fire and report.
+  for (const auto &ip : ips) {
+    m_sharedState.getESPClient(ip)->sendRequestOpt(
+        support::JSONtemp::stringify("factoryreset"), 1000ms);
+    okDevice(ip, "factory reset");
+  }
+
+  // The selection points at devices that are now resetting / going away.
   m_selection.clear();
   return true;
 }
