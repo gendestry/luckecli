@@ -70,6 +70,13 @@ namespace ui
         m_info.setOnCommand([dispatch](const std::string &cmd)
                             { dispatch(cmd); });
 
+        // Embed the preset picker inside the Info panel's Fixture section, rather
+        // than as a separate panel: its focusable component joins the fixture
+        // sub-tree and its element renders among the fixture fields.
+        m_info.setPresetSection(m_presets.component(),
+                                [this] { return m_presets.render(); },
+                                [this] { return m_presets.active(); });
+
         // Wire the grid to the view: a click adds to the selection when a modifier
         // is held OR sticky multi-mode is on; it asks for a refresh whenever a
         // click changes the selection.
@@ -116,15 +123,15 @@ namespace ui
             {"Exit", [&onCommand, this] { onCommand("exit"); requestExit(); }, nullptr, nullptr},
         });
 
-        // The info form and preset dropdown only join the focus path when active
-        // (a single live fixture); otherwise Tab/arrows skip over them.
+        // The info panel only joins the focus path when it has interactive content
+        // (a single live fixture's form, or the multi-selection fold headers);
+        // otherwise Tab/arrows skip over it. The preset picker is nested inside the
+        // info panel now, so it's no longer a separate slot.
         auto infoSlot = Maybe(m_info.component(), [this]
-                              { return m_info.active(); });
-        auto presetSlot = Maybe(m_presets.component(), [this]
-                                { return m_presets.active(); });
+                              { return m_info.focusable(); });
         auto layout = Container::Vertical({
             toolbar,
-            Container::Horizontal({m_grid.component(), infoSlot, presetSlot}),
+            Container::Horizontal({m_grid.component(), infoSlot}),
         });
 
         auto renderer = Renderer(layout, [&]
@@ -140,10 +147,7 @@ namespace ui
             {
                 auto info = window(
                     text(" Info ") | bold | color(accent()),
-                    vbox({
-                        m_info.render(),
-                        m_presets.render(),
-                    }) | flex);
+                    m_info.render() | flex);
                 body = hbox({fixtures | flex, info | size(WIDTH, EQUAL, 40)}) | flex;
             }
             else

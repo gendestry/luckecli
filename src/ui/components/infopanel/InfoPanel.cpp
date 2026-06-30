@@ -42,8 +42,8 @@ namespace ui
                          text(std::to_string(rssi) + "dB") | color(Color::RGB(130, 130, 130))});
         }
 
-        // One fixture's read-only detail block, or a "gone" note if it's no longer
-        // cached.
+        // One fixture's full read-only block (name header + details). Used by the
+        // zero-selection fallback listing.
         Element fixtureBlock(const core::Client &client, const std::string &ip, int fixtureId)
         {
             if (fixtureId < 0 || fixtureId >= static_cast<int>(client.fixtures.size()))
@@ -62,9 +62,23 @@ namespace ui
             rows.push_back(hbox({label("  universe  "), value(std::to_string(f.universe))}));
             rows.push_back(hbox({label("  address   "), value(std::to_string(f.address))}));
             rows.push_back(hbox({label("  footprint "), value(std::to_string(f.footprint))}));
-            // Presets are rendered separately by PresetDropdown (interactive when
-            // a single fixture is selected), so they're intentionally omitted here.
 
+            return vbox(std::move(rows));
+        }
+
+        // The detail rows for one fixture *without* the name header — the header is
+        // drawn separately as the collapsible fold row in the multi listing.
+        Element fixtureDetail(const core::Client &client, const std::string &ip, int fixtureId)
+        {
+            if (fixtureId < 0 || fixtureId >= static_cast<int>(client.fixtures.size()))
+                return text("     fixture is gone") | color(Color::RGB(210, 100, 100));
+
+            const auto &f = client.fixtures[fixtureId];
+            Elements rows;
+            rows.push_back(hbox({label("     ip        "), text(ip) | color(Color::RGB(140, 170, 210))}));
+            rows.push_back(hbox({label("     universe  "), value(std::to_string(f.universe))}));
+            rows.push_back(hbox({label("     address   "), value(std::to_string(f.address))}));
+            rows.push_back(hbox({label("     footprint "), value(std::to_string(f.footprint))}));
             return vbox(std::move(rows));
         }
 
@@ -78,6 +92,11 @@ namespace ui
             e = e | bgcolor(s.focused ? Color::RGB(60, 60, 85) : Color::RGB(40, 40, 55));
             return e | size(WIDTH, GREATER_THAN, 10);
         }
+    }
+
+    std::string InfoPanel::keyOf(const std::string &ip, int id)
+    {
+        return ip + "#" + std::to_string(id);
     }
 
     InfoPanel::InfoPanel(core::SharedState &state, core::commands::CommandExecutor *&exec)
@@ -199,17 +218,27 @@ namespace ui
         m_engineHdr = sectionHdr("Engine", &m_openEngine);
         m_wifiHdr = sectionHdr("WiFi", &m_openWifi);
 
-        // Focus tree. Each section's interactive body is gated by Maybe(...) on its
-        // fold flag, so collapsed sections are skipped when tabbing through.
-        m_container = Container::Vertical({
+        // Holds the per-fixture fold headers for the multi-selection listing;
+        // refilled by rebuildMulti() whenever the selection identity changes.
+        m_multiContainer = Container::Vertical({});
+
+        buildContainer();
+    }
+
+    void InfoPanel::buildContainer()
+    {
+        // Fixture sub-tree: editable fields, then the (optional) preset picker,
+        // then the apply/revert bar — all gated by the Fixture fold flag.
+        Components fixtureBody{m_nameInput, m_universeInput, m_addressInput};
+        if (m_presetComp)
+            // Only focusable while the preset picker is actually shown.
+            fixtureBody.push_back(m_presetActive ? Maybe(m_presetComp, m_presetActive)
+                                                 : m_presetComp);
+        fixtureBody.push_back(Container::Horizontal({m_applyBtn, m_revertBtn}));
+
+        m_singleContainer = Container::Vertical({
             m_fixtureHdr,
-            Maybe(Container::Vertical({
-                      m_nameInput,
-                      m_universeInput,
-                      m_addressInput,
-                      Container::Horizontal({m_applyBtn, m_revertBtn}),
-                  }),
-                  &m_openFixture),
+            Maybe(Container::Vertical(std::move(fixtureBody)), &m_openFixture),
             m_engineHdr,
             Maybe(Container::Vertical({m_serialBox, m_wirelessBox, m_animationBox}), &m_openEngine),
             m_wifiHdr,
@@ -220,6 +249,55 @@ namespace ui
                   }),
                   &m_openWifi),
         });
+
+        // Top level: the single form when one fixture is selected, the fold
+        // headers when several are. Each side only joins the focus tree when live.
+        m_container = Container::Vertical({
+            Maybe(m_singleContainer, [this] { return m_active; }),
+            Maybe(m_multiContainer, [this] { return m_multi; }),
+        });
+    }
+
+    void InfoPanel::setPresetSection(Component comp,
+                                     std::function<Element()> render,
+                                     std::function<bool()> active)
+    {
+        m_presetComp = std::move(comp);
+        m_presetRender = std::move(render);
+        m_presetActive = std::move(active);
+        buildContainer(); // splice the preset component into the fixture sub-tree
+    }
+
+    void InfoPanel::rebuildMulti(const std::vector<core::commands::CommandExecutor::Selection> &sel)
+    {
+        std::vector<std::string> keys;
+        keys.reserve(sel.size());
+        for (const auto &s : sel)
+            keys.push_back(keyOf(s.ip, s.fixtureId));
+        if (keys == m_multiKeys)
+            return; // same fixtures in the same order — keep the existing buttons
+
+        m_multiKeys = keys;
+        m_multiHeaders.clear();
+        m_multiContainer->DetachAllChildren();
+
+        for (const auto &k : keys)
+        {
+            auto opt = ButtonOption::Simple();
+            opt.on_click = [this, k] { m_collapsed[k] = !m_collapsed[k]; };
+            opt.transform = [this, k](const EntryState &s)
+            {
+                auto it = m_collapsed.find(k);
+                const bool collapsed = it != m_collapsed.end() && it->second;
+                auto e = text(collapsed ? " ▸ " : " ▾ ") | color(Color::RGB(80, 190, 190)) | bold;
+                if (s.focused)
+                    e = e | bgcolor(Color::RGB(40, 40, 55));
+                return e;
+            };
+            auto btn = Button(opt);
+            m_multiHeaders.push_back(btn);
+            m_multiContainer->Add(btn);
+        }
     }
 
     void InfoPanel::applyEdits()
@@ -277,20 +355,40 @@ namespace ui
     void InfoPanel::sync()
     {
         m_active = false;
+        m_multi = false;
 
-        const bool single = m_exec && m_exec->selection().size() == 1;
-        if (!single)
+        if (!m_exec)
         {
             m_ip.clear();
             m_fixtureId = -1;
             return;
         }
 
-        const auto &sel = m_exec->selection().front();
+        const auto sel = m_exec->selection();
+        if (sel.empty())
+        {
+            m_ip.clear();
+            m_fixtureId = -1;
+            return;
+        }
+
+        // Several fixtures: collapsible read-only listing. Rebuild the fold
+        // headers only when the selection identity changes.
+        if (sel.size() > 1)
+        {
+            m_multi = true;
+            rebuildMulti(sel);
+            m_ip.clear();
+            m_fixtureId = -1;
+            return;
+        }
+
+        // Single fixture from here on.
+        const auto &s = sel.front();
         const auto clients = m_state.snapshot();
-        const core::Client *client = findClient(clients, sel.ip);
-        if (!client || sel.fixtureId < 0 ||
-            sel.fixtureId >= static_cast<int>(client->fixtures.size()))
+        const core::Client *client = findClient(clients, s.ip);
+        if (!client || s.fixtureId < 0 ||
+            s.fixtureId >= static_cast<int>(client->fixtures.size()))
         {
             m_ip.clear();
             m_fixtureId = -1;
@@ -306,10 +404,10 @@ namespace ui
 
         // Only (re)load the editable text when the target fixture changes, so the
         // 1s refresh doesn't overwrite an edit the user is mid-way through typing.
-        if (sel.ip == m_ip && sel.fixtureId == m_fixtureId)
+        if (s.ip == m_ip && s.fixtureId == m_fixtureId)
             return;
 
-        const auto &fx = client->fixtures[sel.fixtureId];
+        const auto &fx = client->fixtures[s.fixtureId];
         m_name = m_baseName = fx.name;
         m_universe = m_baseUniverse = std::to_string(fx.universe);
         m_address = m_baseAddress = std::to_string(fx.address);
@@ -317,8 +415,8 @@ namespace ui
         // a different device (or fixture, harmlessly).
         m_ssid = m_baseSsid = client->wifi.ssid;
         m_password = m_basePassword = client->wifi.password;
-        m_ip = sel.ip;
-        m_fixtureId = sel.fixtureId;
+        m_ip = s.ip;
+        m_fixtureId = s.fixtureId;
     }
 
     Element InfoPanel::render() const
@@ -328,10 +426,66 @@ namespace ui
         auto scrolled = [this](Element e)
         { return std::move(e) | focusPositionRelative(0.f, m_scroll) | yframe | vscroll_indicator; };
 
+        // ── Multi-selection: collapsible per-fixture blocks ──────────────────
+        if (m_multi && m_exec)
+        {
+            const auto sel = m_exec->selection();
+            // If the selection drifted since the last sync(), the fold buttons may
+            // not line up — fall back to the plain listing until the next sync().
+            if (m_multiHeaders.size() != sel.size())
+                return scrolled(infoListing(m_state, sel));
+
+            const auto clients = m_state.snapshot();
+            Elements blocks;
+            for (std::size_t i = 0; i < sel.size(); ++i)
+            {
+                const auto &s = sel[i];
+                const std::string key = keyOf(s.ip, s.fixtureId);
+                auto it = m_collapsed.find(key);
+                const bool collapsed = it != m_collapsed.end() && it->second;
+
+                const core::Client *client = findClient(clients, s.ip);
+                const bool valid = client && s.fixtureId >= 0 &&
+                                   s.fixtureId < static_cast<int>(client->fixtures.size());
+
+                if (i)
+                    blocks.push_back(separator());
+
+                // Fold-header row: arrow button + name/type, ip pinned right.
+                Elements hdr{m_multiHeaders[i]->Render()};
+                if (valid)
+                {
+                    const auto &f = client->fixtures[s.fixtureId];
+                    hdr.push_back(text(f.name) | bold | color(Color::RGB(190, 160, 230)));
+                    hdr.push_back(text("  "));
+                    hdr.push_back(text(f.type) | color(Color::RGB(130, 130, 130)));
+                }
+                else
+                {
+                    hdr.push_back(text("fixture " + std::to_string(s.fixtureId)) |
+                                  color(Color::RGB(210, 100, 100)));
+                }
+                hdr.push_back(filler());
+                hdr.push_back(text(s.ip) | color(Color::RGB(140, 170, 210)));
+                blocks.push_back(hbox(std::move(hdr)));
+
+                if (!collapsed)
+                {
+                    if (!client)
+                        blocks.push_back(text("     offline") | color(Color::RGB(210, 100, 100)));
+                    else
+                        blocks.push_back(fixtureDetail(*client, s.ip, s.fixtureId));
+                }
+            }
+            return scrolled(vbox(std::move(blocks)));
+        }
+
+        // ── Zero selection / offline single fixture: read-only fallback ──────
         if (!m_active || !m_exec)
             return scrolled(infoListing(m_state, m_exec ? m_exec->selection()
                                                         : std::vector<core::commands::CommandExecutor::Selection>{}));
 
+        // ── Single fixture: editable, sectioned form ─────────────────────────
         const auto &sel = m_exec->selection().front();
         const auto clients = m_state.snapshot();
         const core::Client *client = findClient(clients, sel.ip);
@@ -344,8 +498,6 @@ namespace ui
         auto editRow = [](const std::string &name, const Component &input)
         { return hbox({label(name), input->Render()}); };
 
-        // A section header row: the (interactive) header button plus an optional
-        // live summary shown to its right (handy when the section is collapsed).
         auto headerRow = [](const Component &hdr, Element summary = nullptr)
         {
             Elements row{hdr->Render(), text("  ")};
@@ -378,6 +530,12 @@ namespace ui
             rows.push_back(editRow("  name      ", m_nameInput));
             rows.push_back(editRow("  universe  ", m_universeInput));
             rows.push_back(editRow("  address   ", m_addressInput));
+
+            // Preset picker, embedded among the fixture fields (above footprint).
+            // render() already carries its own 2-space offset, so no extra indent.
+            if (m_presetRender && (!m_presetActive || m_presetActive()))
+                rows.push_back(m_presetRender());
+
             rows.push_back(hbox({label("  footprint "), value(std::to_string(fx.footprint))}));
 
             const bool dirty = m_name != m_baseName || m_universe != m_baseUniverse ||
@@ -402,7 +560,6 @@ namespace ui
         }
 
         // ── WiFi ─────────────────────────────────────────────────
-        // Collapsed summary: ssid + signal badge, so health is visible at a glance.
         Element wifiSummary = hbox({
             text(client->wifi.ssid.empty() ? "—" : client->wifi.ssid) | color(Color::RGB(140, 170, 210)),
             text("  "),
