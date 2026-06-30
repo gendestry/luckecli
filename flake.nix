@@ -8,8 +8,10 @@
       systems = [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin" ];
       forAll = nixpkgs.lib.genAttrs systems;
     in {
-      # Dev shell: build tools plus the libMVRgdtf deps (boost + xerces-c) so the
-      # GDTF exporter can build/link.
+      # Dev shell: build tools plus the libMVRgdtf deps so the GDTF exporter can
+      # build/link. We build libMVRgdtf with its bundled tinyXML (not xerces) and
+      # without MVR-xchange (which needs boost), so the only extra dep is libuuid
+      # (the lib links -luuid on Linux); pthread comes from glibc.
       #   nix develop          # enter the shell
       #   cmake -B build -G Ninja && cmake --build build
       devShells = forAll (system:
@@ -22,10 +24,9 @@
               ninja
               pkg-config
               git # submodules
+              gdb # debugging (VS Code launch config)
 
-              # libMVRgdtf dependencies
-              boost
-              xerces-c
+              util-linux # provides libuuid (-luuid) for libMVRgdtf
             ];
           };
         });

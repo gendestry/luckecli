@@ -26,9 +26,9 @@ namespace Test::Network
         // the first request can't race the listener's startup (dropped response).
         std::mutex listen_mtx;
         std::condition_variable listen_cv;
-        bool listening;
+        bool listening = false;
 
-        bool inited;
+        bool inited = false;
         void listen_ingest_udp();
         void listen_ingest_tcp();
 

@@ -2,12 +2,14 @@
 #include "Tokenizer.h"
 #include "ESPClient.h"
 #include "Backward/Commands.h"
+#include "Gdtf/GdtfExporter.h"
 #include "Utils/JSONtemp.h"
 #include "Theme.h"
 #include "Display/Display.h"
 
 #include <algorithm>
 #include <chrono>
+#include <filesystem>
 #include <format>
 #include <optional>
 #include <thread>
@@ -132,6 +134,11 @@ namespace Test::Commands
                        Command::Usable::SELECTED,
                        [this](const Args &a)
                        { return outputs(a); });
+
+        m_registry.add("exportgdtf", "Export the selected fixture as a .gdtf file", "exportgdtf <path>?",
+                       Command::Usable::SELECTED,
+                       [this](const Args &a)
+                       { return exportgdtf(a); });
 
         m_registry.group("Device");
 
@@ -701,6 +708,52 @@ namespace Test::Commands
                         Theme::name(), sel.fixtureId, Theme::r());
             log.println("{}", *resp);
         }
+        return true;
+    }
+
+    bool CommandExecutor::exportgdtf(const Args &args)
+    {
+        // Per-fixture: a GDTF file describes one fixture type.
+        if (m_selection.size() != 1)
+        {
+            log.error("exportgdtf targets a single fixture (selected {})", m_selection.size());
+            return false;
+        }
+        const auto &sel = m_selection.front();
+
+        // Copy the cached fixture out under the lock.
+        Client::Fixture fix;
+        bool found = false;
+        m_sharedState.withClient(sel.ip, [&](Client &c)
+                                 {
+            if (sel.fixtureId >= 0 && sel.fixtureId < static_cast<int>(c.fixtures.size()))
+            {
+                fix = c.fixtures[sel.fixtureId];
+                found = true;
+            } });
+        if (!found)
+        {
+            log.error("Unknown fixture {} on {}", sel.fixtureId, sel.ip);
+            return false;
+        }
+
+        // Path: explicit arg, else "<name>.gdtf" in the working directory.
+        std::string path = args.has(1) ? args[1] : (!fix.name.empty() ? fix.name : "fixture") + ".gdtf";
+        if (!path.ends_with(".gdtf"))
+            path += ".gdtf";
+        // libMVRgdtf's CFileIdentifier mis-parses a bare filename (no '/') as a
+        // folder and silently writes nothing, so always hand it an absolute path.
+        path = std::filesystem::absolute(path).string();
+
+        auto result = exportFixtureGdtf(fix, path);
+        if (!result.ok)
+        {
+            log.error("GDTF export failed: {}", result.error);
+            return false;
+        }
+        log.println("{}exported{} {} {}({} channels = {} RGB cells){}",
+                    Theme::ok(), Theme::r(), path, Theme::dim(),
+                    fix.footprint, fix.footprint / 3, Theme::r());
         return true;
     }
 

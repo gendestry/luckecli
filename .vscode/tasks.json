@@ -1,25 +1,36 @@
 {
-	"version": "2.0.0",
-	"tasks": [
-		{
-			"type": "cppbuild",
-			"label": "C/C++: g++ build active file",
-			"command": "/usr/bin/g++",
-			"args": [
-				"-fdiagnostics-color=always",
-				"-g",
-				"${file}",
-				"-o",
-				"${fileDirname}/${fileBasenameNoExtension}"
-			],
-			"options": {
-				"cwd": "${fileDirname}"
-			},
-			"problemMatcher": [
-				"$gcc"
-			],
-			"group": "build",
-			"detail": "compiler: /usr/bin/g++"
-		}
-	]
+    "version": "2.0.0",
+    "tasks": [
+        {
+            // Configure into build-nix/. Re-run after adding/removing source files,
+            // since CMake uses file(GLOB) to collect them.
+            "label": "cmake configure (nix)",
+            "type": "shell",
+            "command": "nix",
+            "args": ["develop", "-c", "cmake", "-B", "build-nix", "-G", "Ninja"],
+            "options": { "cwd": "${workspaceFolder}" },
+            "problemMatcher": []
+        },
+        {
+            // Default build task: Ctrl+Shift+B. Configures first (cheap when
+            // unchanged) so new files are always picked up, then builds.
+            "label": "build (nix)",
+            "type": "shell",
+            "command": "nix",
+            "args": ["develop", "-c", "cmake", "--build", "build-nix"],
+            "options": { "cwd": "${workspaceFolder}" },
+            "dependsOn": ["cmake configure (nix)"],
+            "group": { "kind": "build", "isDefault": true },
+            "problemMatcher": ["$gcc"]
+        },
+        {
+            "label": "run (nix, cli)",
+            "type": "shell",
+            "command": "nix",
+            "args": ["develop", "-c", "./build-nix/luckecli", "cli"],
+            "options": { "cwd": "${workspaceFolder}" },
+            "dependsOn": ["build (nix)"],
+            "problemMatcher": []
+        }
+    ]
 }
