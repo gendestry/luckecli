@@ -6,3 +6,6 @@ analysis
 old/
 vcpkg_installed/
 .dockerignore
+.direnv/
+.cache/
+.clangd-cache/

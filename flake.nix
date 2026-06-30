@@ -26,6 +26,9 @@
               git # submodules
               gdb # debugging (VS Code launch config)
 
+              gcc14 # compiler (matches build; provides clangd's system headers)
+              clang-tools # clangd language server for the editor
+
               util-linux # provides libuuid (-luuid) for libMVRgdtf
             ];
           };

@@ -1,0 +1,9 @@
+CompileFlags:
+  CompilationDatabase: build
+  Add:
+    - -Iinclude
+    - -Isrc
+    - -Ilib/Utils/include
+    - -Ilib/json/include
+    - -Ilib/libMVRgdtf/src/Include
+    - -std=gnu++23
