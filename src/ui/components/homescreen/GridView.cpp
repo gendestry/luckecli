@@ -100,8 +100,6 @@ namespace ui
              [this] { return m_multiMode; }},
             {"Select All", [this] { if (m_busy) return; if (m_exec) m_exec->selectAll(); if (m_refresh) m_refresh(); }, nullptr, nullptr},
             {"Clear", [this] { if (m_busy) return; if (m_exec) m_exec->clearSelection(); if (m_refresh) m_refresh(); }, hasSelection, nullptr},
-            {"Universe", [this] { m_showUniverse = !m_showUniverse; }, hasSelection,
-             [this] { return m_showUniverse; }},
             {"Sort", [this] { m_grid.setSortByName(!m_grid.sortByName()); m_grid.rebuild(); if (m_refresh) m_refresh(); }, nullptr,
              [this] { return m_grid.sortByName(); }},
         });

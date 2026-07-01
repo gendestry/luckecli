@@ -45,16 +45,28 @@ namespace ui
         // each panel keeps its state across switches.
         auto tabs = Container::Tab({home, universe, terminal}, &m_view);
 
-        // View switcher down the far-right edge; the active view's button lights up.
-        auto viewBar = Toolbar({
+        // View switcher down the far-right edge; the active view's button lights
+        // up. Exit sits at the bottom, separated from the view buttons.
+        auto viewButtons = Toolbar({
             {"Home", [this] { m_view = 0; }, nullptr, [this] { return m_view == 0; }},
             {"Uni", [this] { m_view = 1; }, nullptr, [this] { return m_view == 1; }},
             {"Term", [this] { m_view = 2; }, nullptr, [this] { return m_view == 2; }},
         });
+        auto exitButton = Toolbar({
+            {"Exit", [&onCommand, &screen] { onCommand("exit"); screen.Exit(); }, nullptr, nullptr},
+        });
+        auto viewBar = Container::Vertical({viewButtons, exitButton});
 
         auto layout = Container::Horizontal({tabs, viewBar});
-        auto renderer = Renderer(layout, [tabs, viewBar]
-                                 { return hbox({tabs->Render() | flex, viewBar->Render()}) | flex; });
+        auto renderer = Renderer(layout, [tabs, viewButtons, exitButton]
+                                 {
+            // View buttons at the top, Exit pushed to the bottom of the column.
+            auto bar = vbox({
+                viewButtons->Render(),
+                filler(),
+                exitButton->Render(),
+            });
+            return hbox({tabs->Render() | flex, bar}) | flex; });
 
         auto with_keys = CatchEvent(renderer, [this, &onCommand, &screen](Event event)
                                     {

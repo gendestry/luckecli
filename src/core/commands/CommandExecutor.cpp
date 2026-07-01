@@ -305,6 +305,7 @@ void CommandExecutor::selectIndex(int flatIndex, bool additive) {
 
   if (!additive) {
     m_selection = {pick};
+    log.println("selected {} fixture {}", pick.ip, pick.fixtureId);
     return;
   }
 
@@ -313,15 +314,26 @@ void CommandExecutor::selectIndex(int flatIndex, bool additive) {
       m_selection.begin(), m_selection.end(), [&](const Selection &s) {
         return s.ip == pick.ip && s.fixtureId == pick.fixtureId;
       });
-  if (it != m_selection.end())
+  if (it != m_selection.end()) {
     m_selection.erase(it);
-  else
+    log.println("deselected {} fixture {} ({} selected)", pick.ip,
+                pick.fixtureId, m_selection.size());
+  } else {
     m_selection.push_back(pick);
+    log.println("added {} fixture {} ({} selected)", pick.ip, pick.fixtureId,
+                m_selection.size());
+  }
 }
 
-void CommandExecutor::selectAll() { m_selection = flatten(m_sharedState); }
+void CommandExecutor::selectAll() {
+  m_selection = flatten(m_sharedState);
+  log.println("selected all ({} fixtures)", m_selection.size());
+}
 
-void CommandExecutor::clearSelection() { m_selection.clear(); }
+void CommandExecutor::clearSelection() {
+  m_selection.clear();
+  log.println("cleared selection");
+}
 
 bool CommandExecutor::setuniverse(const Args &args) {
   auto universe = args.getInt(1);
