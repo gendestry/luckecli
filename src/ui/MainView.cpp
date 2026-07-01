@@ -1,5 +1,7 @@
 #include "ui/MainView.h"
 #include "ui/components/homescreen/Toolbar.h"
+#include "ui/components/homescreen/StatusBar.h"
+#include "core/commands/CommandExecutor.h"
 
 #include <ftxui/component/screen_interactive.hpp>
 #include <ftxui/component/event.hpp>
@@ -8,6 +10,8 @@
 #include <atomic>
 #include <chrono>
 #include <thread>
+#include <utility>
+#include <vector>
 
 namespace ui
 {
@@ -58,7 +62,7 @@ namespace ui
         auto viewBar = Container::Vertical({viewButtons, exitButton});
 
         auto layout = Container::Horizontal({tabs, viewBar});
-        auto renderer = Renderer(layout, [tabs, viewButtons, exitButton]
+        auto renderer = Renderer(layout, [this, tabs, viewButtons, exitButton]
                                  {
             // View buttons at the top, Exit pushed to the bottom of the column.
             auto bar = vbox({
@@ -66,7 +70,33 @@ namespace ui
                 filler(),
                 exitButton->Render(),
             });
-            return hbox({tabs->Render() | flex, bar}) | flex; });
+
+            // Status bar shown under every view: live counts on the left, the
+            // shortcuts for the current view on the right.
+            const int online = m_home.onlineCount();
+            const int selected = m_exec ? static_cast<int>(m_exec->selection().size()) : 0;
+            std::vector<std::pair<std::string, std::string>> hints{
+                {"1/2/3", "views"},
+            };
+            if (m_view == 0)
+            {
+                hints.push_back({"click", "select"});
+                hints.push_back({"shift+click", "add"});
+                hints.push_back({"m", "multi"});
+                hints.push_back({"a", "all"});
+                hints.push_back({"c", "clear"});
+            }
+            else if (m_view == 2)
+            {
+                hints.push_back({"enter", "run"});
+            }
+            hints.push_back({"esc", m_view == 0 ? "exit" : "back"});
+
+            return vbox({
+                       hbox({tabs->Render() | flex, bar}) | flex,
+                       statusBar(online, selected, hints),
+                   }) |
+                   flex; });
 
         auto with_keys = CatchEvent(renderer, [this, &onCommand, &screen](Event event)
                                     {

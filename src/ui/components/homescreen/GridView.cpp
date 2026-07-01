@@ -1,6 +1,5 @@
 #include "ui/components/homescreen/GridView.h"
 #include "ui/components/homescreen/infopanel/InfoPanel.h"
-#include "ui/components/homescreen/StatusBar.h"
 #include "ui/components/menubar/Menubar.h"
 #include "ui/components/homescreen/Toolbar.h"
 #include "ui/components/homescreen/UniverseGrid.h"
@@ -32,6 +31,8 @@ namespace ui
     }
 
     bool GridView::editing() const { return m_info.editing(); }
+
+    int GridView::onlineCount() const { return m_grid.onlineCount(); }
 
     ftxui::Component GridView::component()
     {
@@ -161,11 +162,9 @@ namespace ui
                 body = hbox({actions, fixtures | flex}) | flex;
             }
 
-            const int selected = m_exec ? static_cast<int>(m_exec->selection().size()) : 0;
             return vbox({
                        bar,
                        body | flex,
-                       statusBar(m_grid.onlineCount(), selected),
                    }) |
                    flex; });
 

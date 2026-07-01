@@ -44,6 +44,9 @@ namespace ui
         // not to steal digit keystrokes for view switching).
         bool editing() const;
 
+        // Number of fixtures seen online at the last rebuild (for the status bar).
+        int onlineCount() const;
+
     private:
         core::SharedState &m_state;
         core::commands::CommandExecutor *&m_exec;

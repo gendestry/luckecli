@@ -1,5 +1,7 @@
 #pragma once
 #include <string>
+#include <utility>
+#include <vector>
 
 #include <ftxui/dom/elements.hpp>
 
@@ -7,8 +9,10 @@ namespace ui
 {
 
     // The bottom bar: live counts on the left, key hints on the right. Pure
-    // element, rebuilt every frame by the view's renderer with current numbers.
-    inline ftxui::Element statusBar(int onlineFixtures, int selected)
+    // element, rebuilt every frame by the host with current numbers. `hints` is a
+    // list of (key, description) pairs, so each view can supply its own shortcuts.
+    inline ftxui::Element statusBar(int onlineFixtures, int selected,
+                                    const std::vector<std::pair<std::string, std::string>> &hints)
     {
         using namespace ftxui;
 
@@ -20,24 +24,14 @@ namespace ui
             text(" selected") | color(Color::RGB(130, 130, 130)),
         });
 
-        auto hint = [](const std::string &key, const std::string &what)
+        Elements hintEls;
+        for (const auto &[key, what] : hints)
         {
-            return hbox({
-                text(key) | color(Color::RGB(190, 160, 230)),
-                text(" " + what + "  ") | color(Color::RGB(110, 110, 120)),
-            });
-        };
+            hintEls.push_back(text(key) | color(Color::RGB(190, 160, 230)));
+            hintEls.push_back(text(" " + what + "  ") | color(Color::RGB(110, 110, 120)));
+        }
 
-        auto hints = hbox({
-            hint("click", "select"),
-            hint("ctrl/shift+click", "add"),
-            hint("m", "multi"),
-            hint("a", "all"),
-            hint("c", "clear"),
-            hint("esc", "exit"),
-        });
-
-        return hbox({counts, filler(), hints}) | bgcolor(Color::RGB(24, 24, 30));
+        return hbox({counts, filler(), hbox(std::move(hintEls))}) | bgcolor(Color::RGB(24, 24, 30));
     }
 
 }
