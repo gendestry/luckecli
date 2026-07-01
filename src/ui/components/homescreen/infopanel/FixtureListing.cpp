@@ -1,5 +1,5 @@
-#include "ui/components/infopanel/FixtureListing.h"
-#include "ui/components/infopanel/InfoStyle.h"
+#include "ui/components/homescreen/infopanel/FixtureListing.h"
+#include "ui/components/homescreen/infopanel/InfoStyle.h"
 #include "core/domain/SharedState.h"
 
 namespace ui

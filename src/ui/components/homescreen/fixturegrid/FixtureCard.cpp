@@ -1,5 +1,5 @@
-#include "ui/components/FixtureCard.h"
-#include "ui/components/PingIndicator.h"
+#include "ui/components/homescreen/fixturegrid/FixtureCard.h"
+#include "ui/components/homescreen/fixturegrid/PingIndicator.h"
 
 #include <ftxui/dom/elements.hpp>
 

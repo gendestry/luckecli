@@ -1,6 +1,6 @@
 #pragma once
 #include "ui/Display.h"
-#include "ui/GridView.h"
+#include "ui/components/homescreen/GridView.h"
 
 #include <mutex>
 #include <string>

@@ -1,5 +1,5 @@
-#include "ui/components/infopanel/EngineSection.h"
-#include "ui/components/infopanel/InfoStyle.h"
+#include "ui/components/homescreen/infopanel/EngineSection.h"
+#include "ui/components/homescreen/infopanel/InfoStyle.h"
 
 #include <ftxui/component/component_options.hpp>
 

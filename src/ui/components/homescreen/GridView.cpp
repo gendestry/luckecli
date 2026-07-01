@@ -1,8 +1,8 @@
-#include "ui/GridView.h"
-#include "ui/components/infopanel/InfoPanel.h"
-#include "ui/components/StatusBar.h"
-#include "ui/components/Menubar.h"
-#include "ui/components/UniverseGrid.h"
+#include "ui/components/homescreen/GridView.h"
+#include "ui/components/homescreen/infopanel/InfoPanel.h"
+#include "ui/components/homescreen/StatusBar.h"
+#include "ui/components/menubar/Menubar.h"
+#include "ui/components/homescreen/UniverseGrid.h"
 #include "core/domain/SharedState.h"
 #include "core/commands/CommandExecutor.h"
 

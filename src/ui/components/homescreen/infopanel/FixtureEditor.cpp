@@ -1,5 +1,5 @@
-#include "ui/components/infopanel/FixtureEditor.h"
-#include "ui/components/infopanel/InfoStyle.h"
+#include "ui/components/homescreen/infopanel/FixtureEditor.h"
+#include "ui/components/homescreen/infopanel/InfoStyle.h"
 
 #include <ftxui/component/component_options.hpp>
 #include <ftxui/component/event.hpp>

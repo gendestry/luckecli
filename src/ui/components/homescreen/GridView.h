@@ -1,8 +1,8 @@
 #pragma once
 #include "ui/View.h"
-#include "ui/FixtureGrid.h"
-#include "ui/components/infopanel/InfoPanel.h"
-#include "ui/components/PresetDropdown.h"
+#include "ui/components/homescreen/fixturegrid/FixtureGrid.h"
+#include "ui/components/homescreen/infopanel/InfoPanel.h"
+#include "ui/components/homescreen/PresetDropdown.h"
 
 #include <atomic>
 #include <functional>

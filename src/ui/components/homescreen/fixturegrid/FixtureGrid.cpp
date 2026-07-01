@@ -1,5 +1,5 @@
-#include "ui/FixtureGrid.h"
-#include "ui/components/FixtureCard.h"
+#include "ui/components/homescreen/fixturegrid/FixtureGrid.h"
+#include "ui/components/homescreen/fixturegrid/FixtureCard.h"
 #include "core/domain/SharedState.h"
 #include "core/commands/CommandExecutor.h"
 

@@ -1,4 +1,4 @@
-#include "ui/components/infopanel/ApplyRevertBar.h"
+#include "ui/components/homescreen/infopanel/ApplyRevertBar.h"
 
 #include <ftxui/component/component_options.hpp>
 

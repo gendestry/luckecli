@@ -1,4 +1,4 @@
-#include "ui/components/Menubar.h"
+#include "ui/components/menubar/Menubar.h"
 
 #include <ftxui/dom/elements.hpp>
 

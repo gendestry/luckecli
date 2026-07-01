@@ -1,4 +1,4 @@
-#include "ui/components/UniverseGrid.h"
+#include "ui/components/homescreen/UniverseGrid.h"
 #include "core/domain/SharedState.h"
 
 #include <array>

@@ -7,8 +7,8 @@
 #include <ftxui/dom/elements.hpp>
 
 #include "core/domain/Client.h"
-#include "ui/components/infopanel/ApplyRevertBar.h"
-#include "ui/components/infopanel/EngineSection.h"
+#include "ui/components/homescreen/infopanel/ApplyRevertBar.h"
+#include "ui/components/homescreen/infopanel/EngineSection.h"
 
 namespace ui
 {

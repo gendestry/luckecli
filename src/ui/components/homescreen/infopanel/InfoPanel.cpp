@@ -1,4 +1,4 @@
-#include "ui/components/infopanel/InfoPanel.h"
+#include "ui/components/homescreen/infopanel/InfoPanel.h"
 #include "core/domain/SharedState.h"
 
 #include <ftxui/component/component_options.hpp>
