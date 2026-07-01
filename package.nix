@@ -4,16 +4,15 @@
   cmake,
   nix-update-script,
   util-linux,
+  src ? ./.,
   version ? "git",
 }:
 
 stdenv.mkDerivation (finalAttrs: {
   pname = "luckecli";
-  inherit version;
+  inherit src version;
   __structuredAttrs = true;
   strictDeps = true;
-
-  src = ./.;
 
   nativeBuildInputs = [
     cmake

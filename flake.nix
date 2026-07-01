@@ -36,7 +36,7 @@
       });
       packages = forAll (system:
         rec {
-          luckecli = pkgsFor.${system}.callPackage ./package.nix { version = self.shortRev or "dirty"; };
+          luckecli = pkgsFor.${system}.callPackage ./package.nix { src = self; version = self.shortRev or "dirty"; };
           default = luckecli;
         });
     };
