@@ -3,7 +3,7 @@
 build/
 build-nix/
 analysis
-old/
+bin/
 vcpkg_installed/
 .dockerignore
 .direnv/
