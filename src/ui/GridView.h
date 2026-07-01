@@ -17,7 +17,7 @@ namespace ui
 {
 
 
-    // The "Online Fixtures" screen. Pure composition: a Toolbar (multi-select
+    // The "Online Fixtures" screen. Pure composition: a Menubar (multi-select
     // actions) on top, the FixtureGrid + InfoPanel in the middle, and a StatusBar
     // at the bottom. GridView owns the screen/event loop and the 1s ping ticker;
     // the pieces it lays out each manage their own slice of the UI.

@@ -43,6 +43,12 @@ namespace ui
 
         void setColumns(int cols) { m_cols = cols; }
 
+        // Optional display-only sort of the cards by fixture name (the canonical
+        // flat index is preserved, so clicks/selection stay correct). Off by
+        // default; toggled from the menubar.
+        void setSortByName(bool on) { m_sortByName = on; }
+        bool sortByName() const { return m_sortByName; }
+
     private:
         core::SharedState &m_state;
         core::commands::CommandExecutor *&m_exec;
@@ -53,6 +59,7 @@ namespace ui
         std::function<bool()> m_canSelect;
         int m_cols = 3;
         int m_onlineCount = 0;
+        bool m_sortByName = false;
     };
 
 }

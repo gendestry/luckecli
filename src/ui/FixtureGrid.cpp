@@ -6,7 +6,9 @@
 #include <ftxui/dom/elements.hpp>
 
 #include <algorithm>
+#include <cctype>
 #include <chrono>
+#include <vector>
 
 namespace ui
 {
@@ -28,9 +30,13 @@ namespace ui
 
         const auto now = std::chrono::system_clock::now();
 
-        Components cards;
+        // Gather the fixtures in snapshot order first. The flat index computed
+        // here is the canonical one shared with the executor (flatten()/
+        // selectIndex()/the `select` command), so it must be assigned in
+        // snapshot order and carried on the card even if we reorder for display.
         m_onlineCount = 0;
         int index = 0;
+        std::vector<FixtureCardData> entries;
         for (const auto &[ip, client] : m_state.snapshot())
         {
             const bool online = (now - client.last_ping) < kOnlineWindow;
@@ -49,24 +55,48 @@ namespace ui
                     }
 
                 const int idx = index++;
-                FixtureCardData data{idx, fx.name, fx.type, ip, online, isSel};
-
-                // Plain click replaces the selection; an additive click (modifier
-                // held or multi-mode on) toggles it. The host's onSelect hook
-                // schedules the rebuild/redraw afterwards (off the event handler,
-                // so the cards aren't swapped out from under the click).
-                auto onClick = [this, idx]()
-                {
-                    if (m_canSelect && !m_canSelect())
-                        return; // selection frozen (a command is in flight)
-                    if (m_exec)
-                        m_exec->selectIndex(idx, m_additive && m_additive());
-                    if (m_onSelect)
-                        m_onSelect();
-                };
-
-                cards.push_back(FixtureCard(data, std::move(onClick)));
+                entries.push_back(FixtureCardData{idx, fx.name, fx.type, ip, fx.universe, online, isSel});
             }
+        }
+
+        // Optional display-only sort by name (case-insensitive, ties broken by
+        // the canonical index for stability). The idx field stays untouched.
+        if (m_sortByName)
+            std::sort(entries.begin(), entries.end(),
+                      [](const FixtureCardData &a, const FixtureCardData &b)
+                      {
+                          auto lower = [](std::string s)
+                          {
+                              std::transform(s.begin(), s.end(), s.begin(),
+                                             [](unsigned char c) { return std::tolower(c); });
+                              return s;
+                          };
+                          const auto na = lower(a.name), nb = lower(b.name);
+                          if (na != nb)
+                              return na < nb;
+                          return a.index < b.index;
+                      });
+
+        Components cards;
+        for (const auto &data : entries)
+        {
+            const int idx = data.index;
+
+            // Plain click replaces the selection; an additive click (modifier
+            // held or multi-mode on) toggles it. The host's onSelect hook
+            // schedules the rebuild/redraw afterwards (off the event handler,
+            // so the cards aren't swapped out from under the click).
+            auto onClick = [this, idx]()
+            {
+                if (m_canSelect && !m_canSelect())
+                    return; // selection frozen (a command is in flight)
+                if (m_exec)
+                    m_exec->selectIndex(idx, m_additive && m_additive());
+                if (m_onSelect)
+                    m_onSelect();
+            };
+
+            cards.push_back(FixtureCard(data, std::move(onClick)));
         }
 
         m_container->DetachAllChildren();

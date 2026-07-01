@@ -114,7 +114,7 @@ namespace core::commands
         // fixture in or out of it (shift-click). Out-of-range indices are ignored.
         void selectIndex(int flatIndex, bool additive);
 
-        // Bulk selection helpers for the TUI toolbar. selectAll() selects every
+        // Bulk selection helpers for the TUI menubar. selectAll() selects every
         // currently-online fixture; clearSelection() drops the whole selection.
         // Touched only on the command/UI thread, like selectIndex().
         void selectAll();

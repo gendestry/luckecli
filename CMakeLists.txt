@@ -15,6 +15,11 @@ if(CCACHE_PROGRAM)
     set(CMAKE_C_COMPILER_LAUNCHER ${CCACHE_PROGRAM})
 endif()
 
+# Emit all built libraries (static .a and shared .so) into lib_bin/ at the
+# project root. Set before add_subdirectory so the submodule targets inherit it.
+# set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/lib_bin)
+# set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/lib_bin)
+
 add_subdirectory(lib/json)
 add_subdirectory(lib/Utils)
 add_subdirectory(lib/FTXUI)
@@ -33,6 +38,10 @@ add_subdirectory(lib/libMVRgdtf)
 file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS src/*.cpp)
 
 add_executable(${PROJECT_NAME} ${SOURCES})
+
+# Emit the built binary into bin/ at the project root regardless of the build dir.
+# set_target_properties(${PROJECT_NAME} PROPERTIES
+#         RUNTIME_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/bin)
 
 target_link_libraries(${PROJECT_NAME} PRIVATE utils nlohmann_json ftxui MvrGdtf)
 target_include_directories(${PROJECT_NAME}

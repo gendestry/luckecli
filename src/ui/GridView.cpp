@@ -1,7 +1,7 @@
 #include "ui/GridView.h"
 #include "ui/components/infopanel/InfoPanel.h"
 #include "ui/components/StatusBar.h"
-#include "ui/components/Toolbar.h"
+#include "ui/components/Menubar.h"
 #include "ui/components/UniverseGrid.h"
 #include "core/domain/SharedState.h"
 #include "core/commands/CommandExecutor.h"
@@ -92,13 +92,13 @@ namespace ui
         m_info.sync();
         m_presets.sync();
 
-        // Selection-aware predicates shared by the toolbar buttons.
+        // Selection-aware predicates shared by the menubar buttons.
         auto hasSelection = [this]
         { return m_exec && m_exec->isSelected(); };
         auto singleSelection = [this]
         { return m_exec && m_exec->selection().size() == 1; };
 
-        auto toolbar = Toolbar({
+        auto menubar = Menubar({
             {"Multi", [this] { m_multiMode = !m_multiMode; if (m_refresh) m_refresh(); }, nullptr,
              [this] { return m_multiMode; }},
             {"Select All", [this] { if (m_busy) return; if (m_exec) m_exec->selectAll(); if (m_refresh) m_refresh(); }, nullptr, nullptr},
@@ -120,6 +120,8 @@ namespace ui
              [this] { return m_armReset ? std::string("Confirm reset?") : std::string("Reset"); }},
             {"Universe", [this] { m_showUniverse = !m_showUniverse; }, hasSelection,
              [this] { return m_showUniverse; }},
+            {"Sort", [this] { m_grid.setSortByName(!m_grid.sortByName()); m_grid.rebuild(); if (m_refresh) m_refresh(); }, nullptr,
+             [this] { return m_grid.sortByName(); }},
             {"Exit", [&onCommand, this] { onCommand("exit"); requestExit(); }, nullptr, nullptr},
         });
 
@@ -130,13 +132,13 @@ namespace ui
         auto infoSlot = Maybe(m_info.component(), [this]
                               { return m_info.focusable(); });
         auto layout = Container::Vertical({
-            toolbar,
+            menubar,
             Container::Horizontal({m_grid.component(), infoSlot}),
         });
 
         auto renderer = Renderer(layout, [&]
                                  {
-            auto bar = toolbar->Render() | bgcolor(Color::RGB(30, 30, 40));
+            auto bar = menubar->Render() | bgcolor(Color::RGB(30, 30, 40));
 
             auto fixtures = window(
                 text(" Online Fixtures ") | bold | color(accent()),
@@ -206,7 +208,7 @@ namespace ui
                 return true;
             }
 
-            // Keyboard shortcuts for the multi-select toolbar actions. Selection
+            // Keyboard shortcuts for the multi-select menubar actions. Selection
             // changes are frozen while a command runs off-thread (m_busy).
             if (event == Event::Character('m')) { m_multiMode = !m_multiMode;          if (m_refresh) m_refresh(); return true; }
             if (event == Event::Character('a')) { if (!m_busy && m_exec) m_exec->selectAll();      if (m_refresh) m_refresh(); return true; }

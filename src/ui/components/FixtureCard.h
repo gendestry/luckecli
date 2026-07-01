@@ -15,6 +15,7 @@ namespace ui
         std::string name;    // fixture name
         std::string type;    // fixture type
         std::string ip;      // owning device IP
+        int universe = 0;    // DMX universe
         bool online = false; // device pinged recently → green square
         bool selected = false;
     };

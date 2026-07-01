@@ -1,4 +1,4 @@
-#include "ui/components/Toolbar.h"
+#include "ui/components/Menubar.h"
 
 #include <ftxui/dom/elements.hpp>
 
@@ -8,7 +8,7 @@ namespace ui
 {
     using namespace ftxui;
 
-    ftxui::Component Toolbar(std::vector<ToolbarItem> items)
+    ftxui::Component Menubar(std::vector<MenubarItem> items)
     {
         Components buttons;
         buttons.reserve(items.size());
