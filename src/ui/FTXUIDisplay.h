@@ -1,6 +1,6 @@
 #pragma once
 #include "ui/Display.h"
-#include "ui/components/homescreen/GridView.h"
+#include "ui/MainView.h"
 
 #include <mutex>
 #include <string>
@@ -32,7 +32,7 @@ namespace ui
 
         core::SharedState &m_state;
         core::commands::CommandExecutor *m_exec = nullptr; // set via bindCommandSource()
-        GridView m_grid;
+        MainView m_main;
 
         std::mutex m_routeMutex; // guards m_active
         View *m_active = nullptr;

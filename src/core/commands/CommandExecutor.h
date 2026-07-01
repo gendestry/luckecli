@@ -40,6 +40,12 @@ namespace core::commands
 
         bool m_exit = false;
 
+        // Every command that flows through resolveCommand() (typed in the CLI or
+        // fired by a TUI button) is appended here and persisted to
+        // ~/.luckecli_history, so both frontends share one history/activity log.
+        std::vector<std::string> m_history;
+        void recordHistory(const std::string &line);
+
         void bindCommands();
         Command::Usable mode() const
         {
@@ -108,6 +114,10 @@ namespace core::commands
         // cards are selected). Only touched on the command/UI thread.
         bool isSelected() const { return !m_selection.empty(); }
         const std::vector<Selection> &selection() const { return m_selection; }
+
+        // Shared command history, oldest first. Read by the CLI for up/down
+        // recall and by the TUI to display an activity log.
+        const std::vector<std::string> &history() const { return m_history; }
 
         // Select the fixture at a flat index (as listed/shown in the grid).
         // additive=false replaces the selection; additive=true toggles the

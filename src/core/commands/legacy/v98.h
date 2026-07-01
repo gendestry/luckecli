@@ -59,6 +59,7 @@ namespace core::legacy
                     fix.presetIndex = f.value("presetIndex", 0);
                     fix.numPresets = f.value("numPresets", 0);
                     fix.footprint = f.value("footprint", 0);
+                    fix.highlighted = f.value("highlighted", false);
                     client.fixtures.push_back(std::move(fix));
                 }
             }

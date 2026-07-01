@@ -35,6 +35,7 @@ namespace core
             int presetIndex = 0;
             int numPresets = 0;
             int footprint = 0;
+            bool highlighted = false;
             std::vector<std::string> presets; // preset/group names, fetched on demand
         };
 

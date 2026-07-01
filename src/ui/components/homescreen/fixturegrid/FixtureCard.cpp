@@ -43,9 +43,10 @@ ftxui::Component FixtureCard(const FixtureCardData &data,
     auto card = vbox(std::move(lines)) | size(WIDTH, EQUAL, 28) |
                 size(HEIGHT, EQUAL, 5);
 
-    const Color border = s.focused  ? Color::RGB(190, 160, 230)
-                         : selected ? Color::RGB(90, 200, 110)
-                                    : Color::RGB(50, 50, 60);
+    // Selection (green) is the only card highlight; the keyboard focus ring is
+    // intentionally not drawn, so no card looks picked before the user acts.
+    const Color border = selected ? Color::RGB(90, 200, 110)
+                                   : Color::RGB(50, 50, 60);
     return card | borderStyled(ROUNDED, border);
   };
 

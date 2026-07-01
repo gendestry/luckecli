@@ -2,6 +2,7 @@
 #include "ui/components/homescreen/infopanel/InfoPanel.h"
 #include "ui/components/homescreen/StatusBar.h"
 #include "ui/components/menubar/Menubar.h"
+#include "ui/components/homescreen/Toolbar.h"
 #include "ui/components/homescreen/UniverseGrid.h"
 #include "core/domain/SharedState.h"
 #include "core/commands/CommandExecutor.h"
@@ -10,8 +11,6 @@
 #include <ftxui/component/event.hpp>
 #include <ftxui/dom/elements.hpp>
 
-#include <atomic>
-#include <chrono>
 #include <thread>
 
 namespace ui
@@ -25,31 +24,33 @@ namespace ui
     GridView::GridView(core::SharedState &state, core::commands::CommandExecutor *&exec)
         : m_state(state), m_exec(exec), m_grid(state, exec), m_info(state, exec), m_presets(state, exec) {}
 
-    void GridView::run(std::function<bool(const std::string &)> &onCommand)
+    void GridView::sync()
     {
-        auto screen = App::Fullscreen();
-        m_app = &screen;
+        m_grid.rebuild();
+        m_info.sync();
+        m_presets.sync();
+    }
 
+    bool GridView::editing() const { return m_info.editing(); }
+
+    ftxui::Component GridView::component()
+    {
         // Schedule a card rebuild + repaint on the UI thread. Posted (not run
         // inline) so a click handler never swaps the cards out from under itself.
         m_refresh = [this]()
         {
-            if (auto *s = m_app.load())
-                s->Post([this, s]()
+            if (m_screen)
+                m_screen->Post([this]()
                         {
-                    m_grid.rebuild();
-                    m_info.sync();
-                    m_presets.sync();
-                    s->PostEvent(Event::Custom); });
+                    sync();
+                    m_screen->PostEvent(Event::Custom); });
         };
 
         // Commands triggered from the UI (preset pick, field edit) do blocking
         // network I/O — running them inline would freeze the FTXUI loop. Dispatch
         // them on a detached thread instead, gated by m_busy so overlapping
         // requests can't race on the shared ESPClient queue, and post a refresh
-        // once the device responds. m_command is a copy of the sink (onCommand is
-        // a stack reference here and the thread outlives this call).
-        m_command = onCommand;
+        // once the device responds. m_command is set by the host before component().
         auto dispatch = [this](std::string cmd)
         {
             if (m_busy.exchange(true))
@@ -88,41 +89,43 @@ namespace ui
         // command reads a stable selection (only concurrent reads remain).
         m_grid.setSelectableProvider([this]
                                      { return !m_busy.load(); });
-        m_grid.rebuild();
-        m_info.sync();
-        m_presets.sync();
+        sync();
 
         // Selection-aware predicates shared by the menubar buttons.
         auto hasSelection = [this]
         { return m_exec && m_exec->isSelected(); };
-        auto singleSelection = [this]
-        { return m_exec && m_exec->selection().size() == 1; };
 
         auto menubar = Menubar({
             {"Multi", [this] { m_multiMode = !m_multiMode; if (m_refresh) m_refresh(); }, nullptr,
              [this] { return m_multiMode; }},
             {"Select All", [this] { if (m_busy) return; if (m_exec) m_exec->selectAll(); if (m_refresh) m_refresh(); }, nullptr, nullptr},
             {"Clear", [this] { if (m_busy) return; if (m_exec) m_exec->clearSelection(); if (m_refresh) m_refresh(); }, hasSelection, nullptr},
-            {"Identify", [&onCommand, this] { onCommand("highlight"); if (m_refresh) m_refresh(); }, singleSelection, nullptr},
-            {"Reboot", [&onCommand, this] { onCommand("reboot"); if (m_refresh) m_refresh(); }, hasSelection, nullptr},
-            // Factory reset is destructive: first click arms (button turns into
-            // "Confirm reset?" and lights up), second click fires. Clicking it
-            // when disarmed never wipes anything.
-            {"Reset",
-             [&onCommand, this] {
+            {"Universe", [this] { m_showUniverse = !m_showUniverse; }, hasSelection,
+             [this] { return m_showUniverse; }},
+            {"Sort", [this] { m_grid.setSortByName(!m_grid.sortByName()); m_grid.rebuild(); if (m_refresh) m_refresh(); }, nullptr,
+             [this] { return m_grid.sortByName(); }},
+        });
+
+        // Vertical action toolbar on the right. Every button targets the whole
+        // current selection (highlight/reboot/factoryreset all iterate the
+        // selection), so they share `hasSelection` and gray out when nothing is
+        // picked. New fixture actions should follow the same pattern.
+        auto toolbar = Toolbar({
+            {"HL", [this] { m_command("highlight"); if (m_refresh) m_refresh(); }, hasSelection, nullptr},
+            {"RBT", [this] { m_command("reboot"); if (m_refresh) m_refresh(); }, hasSelection, nullptr},
+            // Factory reset is destructive: first click arms (label becomes
+            // "RST?" and lights up), second click fires. Disarmed clicks never
+            // wipe anything.
+            {"RST",
+             [this] {
                  if (!m_armReset) { m_armReset = true; return; }
-                 onCommand("factoryreset confirm");
+                 m_command("factoryreset confirm");
                  m_armReset = false;
                  if (m_refresh) m_refresh();
              },
              hasSelection,
              [this] { return m_armReset; },
-             [this] { return m_armReset ? std::string("Confirm reset?") : std::string("Reset"); }},
-            {"Universe", [this] { m_showUniverse = !m_showUniverse; }, hasSelection,
-             [this] { return m_showUniverse; }},
-            {"Sort", [this] { m_grid.setSortByName(!m_grid.sortByName()); m_grid.rebuild(); if (m_refresh) m_refresh(); }, nullptr,
-             [this] { return m_grid.sortByName(); }},
-            {"Exit", [&onCommand, this] { onCommand("exit"); requestExit(); }, nullptr, nullptr},
+             [this] { return m_armReset ? std::string("RST?") : std::string("RST"); }},
         });
 
         // The info panel only joins the focus path when it has interactive content
@@ -131,12 +134,13 @@ namespace ui
         // info panel now, so it's no longer a separate slot.
         auto infoSlot = Maybe(m_info.component(), [this]
                               { return m_info.focusable(); });
+
         auto layout = Container::Vertical({
             menubar,
-            Container::Horizontal({m_grid.component(), infoSlot}),
+            Container::Horizontal({m_grid.component(), infoSlot, toolbar}),
         });
 
-        auto renderer = Renderer(layout, [&]
+        auto renderer = Renderer(layout, [this, menubar, toolbar]
                                  {
             auto bar = menubar->Render() | bgcolor(Color::RGB(30, 30, 40));
 
@@ -144,17 +148,19 @@ namespace ui
                 text(" Online Fixtures ") | bold | color(accent()),
                 m_grid.component()->Render() | center | flex);
 
+            auto actions = toolbar->Render();
+
             Element body;
             if (m_exec && m_exec->isSelected())
             {
                 auto info = window(
                     text(" Info ") | bold | color(accent()),
                     m_info.render() | flex);
-                body = hbox({fixtures | flex, info | size(WIDTH, EQUAL, 40)}) | flex;
+                body = hbox({actions, fixtures | flex, info | size(WIDTH, EQUAL, 40)}) | flex;
             }
             else
             {
-                body = fixtures | flex;
+                body = hbox({actions, fixtures | flex}) | flex;
             }
 
             const int selected = m_exec ? static_cast<int>(m_exec->selection().size()) : 0;
@@ -182,7 +188,10 @@ namespace ui
 
         auto root = renderer | Modal(universePopup, &m_showUniverse);
 
-        auto with_keys = CatchEvent(root, [&](Event event)
+        // Home-view-local shortcuts. These only fire while the Home tab is active,
+        // since Container::Tab only routes events to the focused child. Global
+        // concerns (exit, view switching) live in the host.
+        auto with_keys = CatchEvent(root, [this](Event event)
                                     {
             // Track ctrl/shift so card clicks can tell single- from multi-select
             // (runs before the cards handle the click). Either modifier works,
@@ -214,43 +223,9 @@ namespace ui
             if (event == Event::Character('a')) { if (!m_busy && m_exec) m_exec->selectAll();      if (m_refresh) m_refresh(); return true; }
             if (event == Event::Character('c')) { if (!m_busy && m_exec) m_exec->clearSelection(); if (m_refresh) m_refresh(); return true; }
 
-            if (event == Event::Escape)
-            {
-                onCommand("exit"); // routes through CommandExecutor → Display::quit()
-                screen.Exit();
-                return true;
-            }
             return false; });
 
-        // Keep ping squares (and newly-discovered devices) fresh while up.
-        std::atomic<bool> ticking{true};
-        std::thread ticker([&]()
-                           {
-            while (ticking.load())
-            {
-                std::this_thread::sleep_for(std::chrono::seconds(1));
-                onStateChanged();
-            } });
-
-        screen.Loop(with_keys);
-
-        ticking = false;
-        ticker.join();
-        m_refresh = nullptr;
-        m_app = nullptr;
-    }
-
-    void GridView::onStateChanged()
-    {
-        if (auto *s = m_app.load())
-        {
-            s->Post([this, s]()
-                    {
-                m_grid.rebuild();
-                m_info.sync();
-                m_presets.sync();
-                s->PostEvent(Event::Custom); });
-        }
+        return with_keys;
     }
 
 }

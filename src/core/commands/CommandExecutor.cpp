@@ -8,17 +8,58 @@
 #include "support/util/JSONtemp.h"
 
 #include <algorithm>
+#include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <nlohmann/json.hpp>
 #include <optional>
 #include <thread>
 
 namespace core::commands {
 
+namespace {
+constexpr std::size_t kMaxHistory = 1000;
+
+std::string historyPath() {
+  const char *home = std::getenv("HOME");
+  return (home ? std::string(home) : std::string(".")) + "/.luckecli_history";
+}
+
+std::vector<std::string> loadHistory(const std::string &path) {
+  std::vector<std::string> hist;
+  std::ifstream in(path);
+  std::string line;
+  while (std::getline(in, line))
+    if (!line.empty())
+      hist.push_back(line);
+  if (hist.size() > kMaxHistory)
+    hist.erase(hist.begin(), hist.end() - kMaxHistory);
+  return hist;
+}
+
+void saveHistory(const std::string &path, const std::vector<std::string> &hist) {
+  std::ofstream out(path, std::ios::trunc);
+  for (const auto &h : hist)
+    out << h << '\n';
+}
+} // namespace
+
 CommandExecutor::CommandExecutor(SharedState &state, ui::Display &display)
     : log("Command"), m_sharedState(state), m_display(display) {
+  m_history = loadHistory(historyPath());
   bindCommands();
   m_display.bindCommandSource(this);
+}
+
+// Append a command to the shared history and persist it. Skips blanks and
+// consecutive duplicates; keeps at most kMaxHistory entries.
+void CommandExecutor::recordHistory(const std::string &line) {
+  if (line.empty() || (!m_history.empty() && m_history.back() == line))
+    return;
+  m_history.push_back(line);
+  if (m_history.size() > kMaxHistory)
+    m_history.erase(m_history.begin());
+  saveHistory(historyPath(), m_history);
 }
 
 // Flatten the device registry into an ordered (ip, fixtureId) list so a
@@ -35,6 +76,8 @@ void CommandExecutor::run() {
 }
 
 bool CommandExecutor::resolveCommand(const std::string &line) {
+  recordHistory(line);
+
   Args args = tokenize(line);
 
   auto cmd = m_registry.resolve(args, mode());
@@ -407,28 +450,31 @@ bool CommandExecutor::setFixtureField(const Args &args,
 }
 
 bool CommandExecutor::highlight(const Args &args) {
-  // Per-fixture: a momentary flash has no single target on a multi-selection.
-  if (m_selection.size() != 1) {
-    log.error("highlight targets a single fixture (selected {})",
-              m_selection.size());
+  if (m_selection.empty()) {
+    log.error("Nothing selected");
     return false;
   }
 
   // Default on; `highlight off`/`false`/`0` turns it back off.
   const bool on = !(args[1] == "off" || args[1] == "false" || args[1] == "0");
 
-  const auto &sel = m_selection.front();
-  auto client = m_sharedState.getESPClient(sel.ip);
-  auto resp = client->sendRequestOpt(
-      support::JSONtemp::stringify("setfixture", "id", sel.fixtureId, "highlight",
-                                 on),
-      4000ms);
-  if (!resp) {
-    log.error("No response from {} fixture {}", sel.ip, sel.fixtureId);
-    return false;
+  // Apply to every selected fixture; one unresponsive device shouldn't stop
+  // the rest, so report per-fixture and only fail if none responded.
+  bool any = false;
+  for (const auto &sel : m_selection) {
+    auto client = m_sharedState.getESPClient(sel.ip);
+    auto resp = client->sendRequestOpt(
+        support::JSONtemp::stringify("setfixture", "id", sel.fixtureId,
+                                     "highlight", on),
+        4000ms);
+    if (!resp) {
+      log.error("No response from {} fixture {}", sel.ip, sel.fixtureId);
+      continue;
+    }
+    okFixture(sel, "highlight", on ? "on" : "off");
+    any = true;
   }
-  okFixture(sel, "highlight", on ? "on" : "off");
-  return true;
+  return any;
 }
 
 bool CommandExecutor::reboot(const Args &) {

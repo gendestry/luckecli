@@ -46,6 +46,10 @@ namespace ui
         // listing's fold headers) and should join the focus/event tree.
         bool focusable() const { return m_active || m_multi; }
 
+        // True while one of the editable text fields is focused (name / universe /
+        // address / ssid / password). Lets the host avoid stealing keystrokes.
+        bool editing() const;
+
         // The info section element (editable form, collapsible listing, or empty).
         ftxui::Element render() const;
 

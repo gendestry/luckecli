@@ -99,6 +99,13 @@ namespace ui
         return ip + "#" + std::to_string(id);
     }
 
+    bool InfoPanel::editing() const
+    {
+        return m_nameInput->Focused() || m_universeInput->Focused() ||
+               m_addressInput->Focused() || m_ssidInput->Focused() ||
+               m_passwordInput->Focused();
+    }
+
     InfoPanel::InfoPanel(core::SharedState &state, core::commands::CommandExecutor *&exec)
         : m_state(state), m_exec(exec)
     {

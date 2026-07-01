@@ -4,10 +4,10 @@
 namespace ui
 {
 
-    // m_grid binds a reference to m_exec, so it always sees the pointer set later
-    // by bindCommandSource(). (m_exec is declared before m_grid.)
+    // m_main binds a reference to m_exec, so it always sees the pointer set later
+    // by bindCommandSource(). (m_exec is declared before m_main.)
     FTXUIDisplay::FTXUIDisplay(core::SharedState &state)
-        : m_state(state), m_grid(m_state, m_exec) {}
+        : m_state(state), m_main(m_state, m_exec) {}
 
     void FTXUIDisplay::bindCommandSource(core::commands::CommandExecutor *exec)
     {
@@ -30,8 +30,8 @@ namespace ui
         m_quit = false;
         while (!m_quit)
         {
-            setActive(&m_grid);
-            m_grid.run(onCommand);
+            setActive(&m_main);
+            m_main.run(onCommand);
             setActive(nullptr);
         }
     }
