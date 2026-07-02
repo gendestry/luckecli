@@ -40,14 +40,16 @@ namespace ui
         m_home.setScreen(&screen);
         m_home.setCommandSink(onCommand);
         m_terminal.setCommandSink(onCommand);
+        m_control.setCommandSink(onCommand);
 
         auto home = m_home.component();
         auto universe = m_universe.component();
         auto terminal = m_terminal.component();
+        auto control = m_control.component();
 
         // Only the child at m_view renders and receives events; all stay alive, so
         // each panel keeps its state across switches.
-        auto tabs = Container::Tab({home, universe, terminal}, &m_view);
+        auto tabs = Container::Tab({home, universe, terminal, control}, &m_view);
 
         // View switcher down the far-right edge; the active view's button lights
         // up. Exit sits at the bottom, separated from the view buttons.
@@ -55,6 +57,7 @@ namespace ui
             {"Home", [this] { m_view = 0; }, nullptr, [this] { return m_view == 0; }},
             {"Uni", [this] { m_view = 1; }, nullptr, [this] { return m_view == 1; }},
             {"Term", [this] { m_view = 2; }, nullptr, [this] { return m_view == 2; }},
+            {"Ctrl", [this] { m_view = 3; }, nullptr, [this] { return m_view == 3; }},
         });
         auto exitButton = Toolbar({
             {"Exit", [&onCommand, &screen] { onCommand("exit"); screen.Exit(); }, nullptr, nullptr},
@@ -76,7 +79,7 @@ namespace ui
             const int online = m_home.onlineCount();
             const int selected = m_exec ? static_cast<int>(m_exec->selection().size()) : 0;
             std::vector<std::pair<std::string, std::string>> hints{
-                {"1/2/3", "views"},
+                {"1-4", "views"},
             };
             if (m_view == 0)
             {
@@ -89,6 +92,11 @@ namespace ui
             else if (m_view == 2)
             {
                 hints.push_back({"enter", "run"});
+            }
+            else if (m_view == 3)
+            {
+                hints.push_back({"←/→", "adjust"});
+                hints.push_back({"enter", "apply"});
             }
             hints.push_back({"esc", m_view == 0 ? "exit" : "back"});
 
@@ -107,6 +115,7 @@ namespace ui
                 if (event == Event::Character('1')) { m_view = 0; return true; }
                 if (event == Event::Character('2')) { m_view = 1; return true; }
                 if (event == Event::Character('3')) { m_view = 2; return true; }
+                if (event == Event::Character('4')) { m_view = 3; return true; }
             }
 
             // Escape backs out to Home; from Home it exits the app.

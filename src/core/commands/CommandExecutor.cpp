@@ -6,19 +6,53 @@
 #include "ui/Theme.h"
 #include "core/commands/Tokenizer.h"
 #include "support/util/JSONtemp.h"
+#include "Utils/Network/SACN.h"
+#include "Utils/Network/IP.h"
 
 #include <algorithm>
+#include <array>
 #include <cstdlib>
+#include <map>
 #include <filesystem>
 #include <fstream>
 #include <nlohmann/json.hpp>
 #include <optional>
+#include <set>
 #include <thread>
+
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <unistd.h>
 
 namespace core::commands {
 
 namespace {
 constexpr std::size_t kMaxHistory = 1000;
+
+// The local interface IP that routes to `deviceIp`, used as the multicast source
+// interface for sACN. Found via the connected-UDP-socket trick (no packet is
+// actually sent). Falls back to 0.0.0.0 (OS default interface) on any failure.
+std::string localIpFor(const std::string &deviceIp) {
+  int s = ::socket(AF_INET, SOCK_DGRAM, 0);
+  if (s < 0)
+    return "0.0.0.0";
+  sockaddr_in addr{};
+  addr.sin_family = AF_INET;
+  addr.sin_port = htons(5568);
+  inet_pton(AF_INET, deviceIp.c_str(), &addr.sin_addr);
+  std::string result = "0.0.0.0";
+  if (::connect(s, reinterpret_cast<sockaddr *>(&addr), sizeof(addr)) == 0) {
+    sockaddr_in local{};
+    socklen_t len = sizeof(local);
+    if (::getsockname(s, reinterpret_cast<sockaddr *>(&local), &len) == 0) {
+      char buf[INET_ADDRSTRLEN] = {0};
+      inet_ntop(AF_INET, &local.sin_addr, buf, sizeof(buf));
+      result = buf;
+    }
+  }
+  ::close(s);
+  return result;
+}
 
 std::string historyPath() {
   const char *home = std::getenv("HOME");
@@ -107,6 +141,15 @@ void CommandExecutor::bindCommands() {
   m_registry.add("list", "List devices and fixtures", "list",
                  Command::Usable::UNSELECTED,
                  [this](const Args &a) { return list(a); });
+
+  m_registry.add(std::vector<std::string>{"blackout", "clear"},
+                 "Turn off all fixtures (sACN DMX blackout)", "blackout",
+                 Command::Usable::ANYTIME,
+                 [this](const Args &a) { return blackout(a); });
+
+  m_registry.add("setcolor", "Set RGB color on fixtures (sACN)",
+                 "setcolor <r> <g> <b>", Command::Usable::ANYTIME,
+                 [this](const Args &a) { return setcolor(a); });
 
   m_registry.add("select", "Select fixture(s) by index", "select <id> <id>...",
                  Command::Usable::UNSELECTED,
@@ -487,6 +530,121 @@ bool CommandExecutor::highlight(const Args &args) {
     any = true;
   }
   return any;
+}
+
+// Blackout: send a zero-filled DMX frame over sACN to every universe that has a
+// fixture, turning everything off. A full-frame zero covers each fixture's
+// footprint (and anything else on the wire) — receivers consume the whole 512.
+bool CommandExecutor::blackout(const Args &) {
+  std::set<int> universes;
+  std::string anyIp;
+  for (const auto &[ip, client] : m_sharedState.snapshot()) {
+    if (anyIp.empty())
+      anyIp = ip;
+    for (const auto &f : client.fixtures)
+      universes.insert(f.universe);
+  }
+
+  if (universes.empty()) {
+    log.error("No fixtures to clear");
+    return false;
+  }
+
+  const Utils::Network::IP localIp(localIpFor(anyIp));
+  const std::array<uint8_t, 512> zeros{}; // value-initialised → all channels 0
+
+  std::size_t cleared = 0;
+  for (int u : universes) {
+    if (u < 0 || u > 255) {
+      log.error("Universe {} out of sACN range (0-255), skipping", u);
+      continue;
+    }
+    try {
+      Utils::Network::SacnSender sender(static_cast<uint8_t>(u), localIp);
+      sender.send(zeros);
+      ++cleared;
+    } catch (const std::exception &e) {
+      log.error("sACN send failed on universe {}: {}", u, e.what());
+    }
+  }
+
+  if (cleared == 0)
+    return false;
+  log.println("{}✓{} blackout — cleared {}{}{} universe(s) via {}{}{}", Theme::ok(),
+              Theme::r(), Theme::val(), cleared, Theme::r(), Theme::ip(),
+              localIp.str(), Theme::r());
+  return true;
+}
+
+// setcolor <r> <g> <b>: send an RGB color over sACN to the selected fixtures (or
+// all of them if nothing is selected). Each fixture's footprint is filled with
+// the R,G,B triplet repeated, so plain RGB fixtures and RGB pixel strips both
+// light up. Note: a universe frame is sent whole, so any fixture sharing a
+// universe with a target but not itself targeted goes dark.
+bool CommandExecutor::setcolor(const Args &args) {
+  auto r = args.getInt(1), g = args.getInt(2), b = args.getInt(3);
+  if (!r || !g || !b) {
+    log.error("Usage: setcolor <r> <g> <b>");
+    return false;
+  }
+  auto clamp = [](int v) { return std::max(0, std::min(255, v)); };
+  const uint8_t R = clamp(*r), G = clamp(*g), B = clamp(*b);
+
+  const auto snap = m_sharedState.snapshot();
+  std::map<int, std::array<uint8_t, 512>> buffers; // universe → DMX frame
+  std::string anyIp;
+
+  auto fill = [&](const std::string &ip, const Client::Fixture &f) {
+    if (anyIp.empty())
+      anyIp = ip;
+    auto &buf = buffers[f.universe];
+    for (int k = 0; k < f.footprint; ++k) {
+      const int ch = f.address - 1 + k; // DMX address is 1-based
+      if (ch < 0 || ch >= 512)
+        break;
+      buf[ch] = (k % 3 == 0) ? R : (k % 3 == 1) ? G : B;
+    }
+  };
+
+  if (!m_selection.empty()) {
+    for (const auto &sel : m_selection)
+      for (const auto &[ip, client] : snap)
+        if (ip == sel.ip && sel.fixtureId >= 0 &&
+            sel.fixtureId < static_cast<int>(client.fixtures.size()))
+          fill(ip, client.fixtures[sel.fixtureId]);
+  } else {
+    for (const auto &[ip, client] : snap)
+      for (const auto &f : client.fixtures)
+        fill(ip, f);
+  }
+
+  if (buffers.empty()) {
+    log.error("No fixtures to set");
+    return false;
+  }
+
+  const Utils::Network::IP localIp(localIpFor(anyIp));
+  std::size_t sent = 0;
+  for (auto &[u, buf] : buffers) {
+    if (u < 0 || u > 255) {
+      log.error("Universe {} out of sACN range (0-255), skipping", u);
+      continue;
+    }
+    try {
+      Utils::Network::SacnSender sender(static_cast<uint8_t>(u), localIp);
+      sender.send(buf);
+      ++sent;
+    } catch (const std::exception &e) {
+      log.error("sACN send failed on universe {}: {}", u, e.what());
+    }
+  }
+
+  if (sent == 0)
+    return false;
+  log.println("{}✓{} color ({}{}, {}, {}{}) → {}{}{} universe(s)", Theme::ok(),
+              Theme::r(), Theme::val(), R, G, B, Theme::r(), Theme::val(), sent,
+              Theme::r());
+  return true;
 }
 
 bool CommandExecutor::reboot(const Args &) {

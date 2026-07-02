@@ -3,6 +3,7 @@
 #include "ui/components/homescreen/GridView.h"
 #include "ui/components/universe/UniverseView.h"
 #include "ui/components/terminal/TerminalView.h"
+#include "ui/components/control/ControlView.h"
 
 #include <functional>
 #include <string>
@@ -37,8 +38,9 @@ namespace ui
         GridView m_home;
         UniverseView m_universe;
         TerminalView m_terminal;
+        ControlView m_control;
 
-        int m_view = 0; // 0=Home, 1=Universe, 2=Terminal
+        int m_view = 0; // 0=Home, 1=Universe, 2=Terminal, 3=Control
     };
 
 }

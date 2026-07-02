@@ -125,6 +125,9 @@ namespace ui
              hasSelection,
              [this] { return m_armReset; },
              [this] { return m_armReset ? std::string("RST?") : std::string("RST"); }},
+            // Blackout targets every fixture (all universes), not the selection,
+            // so it stays enabled regardless of what's picked.
+            {"BLK", [this] { m_command("blackout"); if (m_refresh) m_refresh(); }, nullptr, nullptr},
         });
 
         // The info panel only joins the focus path when it has interactive content
