@@ -5,6 +5,7 @@
 #include <vector>
 
 #include <ftxui/component/component.hpp>
+#include <ftxui/dom/elements.hpp>
 
 namespace ui
 {
@@ -22,8 +23,17 @@ namespace ui
         std::function<std::vector<std::pair<std::string, std::string>>()> hints;
     };
 
-    // The bottom bar: live counts on the left, key hints on the right. Returns a
-    // renderer component that rebuilds itself from the model every frame.
-    ftxui::Component StatusBar(StatusBarModel model);
+    // The bottom bar plus its hover overlay. `component` is the interactive bar
+    // (place it in the layout); `overlay` returns a floating fixture-name list to
+    // be layered over everything else (empty when nothing is hovered).
+    struct StatusBarComponent
+    {
+        ftxui::Component component;
+        std::function<ftxui::Element()> overlay;
+    };
+
+    // The bottom bar: live counts on the left, key hints on the right. Hovering a
+    // count reveals that group's fixture names via the overlay.
+    StatusBarComponent StatusBar(StatusBarModel model);
 
 }

@@ -1,4 +1,6 @@
 #pragma once
+#include <array>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -64,6 +66,7 @@ namespace core::commands
         bool highlight(const Args &);
         bool blackout(const Args &);
         bool setcolor(const Args &);
+        bool setfan(const Args &);
         bool reboot(const Args &);
         bool factoryreset(const Args &);
         bool setwifi(const Args &);
@@ -105,6 +108,17 @@ namespace core::commands
         // field name; `member` is the matching cached Client::Fixture field.
         bool setFixtureField(const Args &args, const std::string &cmdName,
                              const std::string &jsonKey, int Client::Fixture::*member);
+
+        // Fill each targeted fixture's footprint with its assigned RGB and send
+        // one sACN frame per universe. Shared by setcolor/setfan. Returns false
+        // (and logs) if there was nothing to send.
+        bool sendFixtureColors(
+            const std::vector<std::pair<const Client::Fixture *,
+                                        Utils::Colors::RGB>> &targets);
+
+        // Send the assembled universe→DMX frames, one sACN sender per universe.
+        // Returns false (and logs) if the map is empty or nothing sent.
+        bool sendBuffers(std::map<int, std::array<uint8_t, 512>> &buffers);
 
     public:
         CommandExecutor(SharedState &state, ui::Display &display);

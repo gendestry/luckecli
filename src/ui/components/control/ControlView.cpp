@@ -11,21 +11,36 @@ using namespace ftxui;
 
 ftxui::Component ControlView::component() {
     m_picker = std::make_shared<HSVPicker>();
+    m_pickerB = std::make_shared<HSVPicker>(0.f); // fan end defaults to red
 
-    // Push the current color to every fixture (setcolor with no selection
-    // fills all of them; the handler repeats the R,G,B triplet across each
-    // fixture's footprint).
-    auto apply = [this] {
-        if (!m_command)
-            return;
-        Utils::Colors::RGB c = m_picker->rgb();
-        m_command("setcolor " + std::to_string(c.r) + " " +
-                  std::to_string(c.g) + " " + std::to_string(c.b));
+    auto rgbStr = [](const Utils::Colors::RGB &c) {
+        return std::to_string(c.r) + " " + std::to_string(c.g) + " " +
+               std::to_string(c.b);
     };
 
-    // The picker applies live as you drag any slider, so moving hue,
-    // saturation or value immediately updates every fixture.
+    // Push the current color(s) to the fixtures. In solid mode a single
+    // `setcolor` fills every targeted fixture; in fan mode `setfan` spreads a
+    // gradient from color A to color B across them. With no selection, both
+    // apply to all fixtures.
+    auto apply = [this, rgbStr] {
+        if (!m_command)
+            return;
+        if (m_mode == 1)
+            m_command("setfan " + rgbStr(m_picker->rgb()) + " " +
+                      rgbStr(m_pickerB->rgb()));
+        else
+            m_command("setcolor " + rgbStr(m_picker->rgb()));
+    };
+
+    // Live-apply as any slider moves.
     m_picker->onChange(apply);
+    m_pickerB->onChange(apply);
+
+    // Solid / Fan mode toggle; re-applies on switch so the output matches.
+    std::vector<std::string> modes = {"Solid", "Fan"};
+    auto modeOpt = RadioboxOption();
+    modeOpt.on_change = apply;
+    auto modeBox = Radiobox(modes, &m_mode, modeOpt);
 
     auto applyOpt = ButtonOption::Simple();
     applyOpt.on_click = apply;
@@ -38,13 +53,26 @@ ftxui::Component ControlView::component() {
     auto applyBtn = Button(applyOpt);
 
     auto pickerComp = m_picker->component();
-    auto layout = Container::Vertical({pickerComp, applyBtn});
+    auto pickerBComp = m_pickerB->component();
+    auto layout =
+        Container::Vertical({modeBox, pickerComp, pickerBComp, applyBtn});
 
-    return Renderer(layout, [this, pickerComp, applyBtn] {
-        auto swatch = text("          ") | bgcolor(m_picker->color());
+    return Renderer(layout, [this, modeBox, pickerComp, pickerBComp, applyBtn] {
+        Elements pickers = {vbox({text(m_mode == 1 ? " Color A " : " Color ") |
+                                      color(Theme::windowTitle()),
+                                  pickerComp->Render()}) |
+                            flex};
+        if (m_mode == 1)
+            pickers.push_back(vbox({text(" Color B ") |
+                                        color(Theme::windowTitle()),
+                                    pickerBComp->Render()}) |
+                              flex);
+
+        auto body = vbox({modeBox->Render(), separator(),
+                          hbox(std::move(pickers)) | flex});
 
         return window(text(" Control ") | bold | color(Theme::windowTitle()),
-                      pickerComp->Render() | flex) |
+                      body | flex) |
                flex;
     });
 }

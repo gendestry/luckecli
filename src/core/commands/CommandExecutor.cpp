@@ -130,6 +130,12 @@ void CommandExecutor::bindCommands() {
                    "setcolor <r> <g> <b>", Command::Usable::ANYTIME,
                    [this](const Args &a) { return setcolor(a); });
 
+    m_registry.add("setfan",
+                   "Spread a color gradient across fixtures (color A → B)",
+                   "setfan <r1> <g1> <b1> <r2> <g2> <b2>",
+                   Command::Usable::ANYTIME,
+                   [this](const Args &a) { return setfan(a); });
+
     m_registry.add("select", "Select fixture(s) by index",
                    "select <id> <id>...", Command::Usable::UNSELECTED,
                    [this](const Args &a) { return select(a); });
@@ -556,47 +562,50 @@ bool CommandExecutor::blackout(const Args &) {
 // with the R,G,B triplet repeated, so plain RGB fixtures and RGB pixel strips
 // both light up. Note: a universe frame is sent whole, so any fixture sharing a
 // universe with a target but not itself targeted goes dark.
-bool CommandExecutor::setcolor(const Args &args) {
-    auto r = args.getInt(1), g = args.getInt(2), b = args.getInt(3);
-    if (!r || !g || !b) {
-        log.error("Usage: setcolor <r> <g> <b>");
-        return false;
+// The ordered list of fixtures a color command targets: the selection in
+// selection order, or every known fixture if nothing is selected.
+static std::vector<const Client::Fixture *>
+colorTargets(const core::SelectionSet &selection,
+             const core::ClientList &snap) {
+    std::vector<const Client::Fixture *> targets;
+    if (!selection.empty()) {
+        for (const auto &[sel, fx] : selection.resolved(snap))
+            targets.push_back(fx);
+    } else {
+        for (const auto &[ip, client] : snap)
+            for (const auto &f : client.fixtures)
+                targets.push_back(&f);
     }
-    auto clamp = [](int v) {
-        return static_cast<uint8_t>(std::max(0, std::min(255, v)));
-    };
-    const Utils::Colors::RGB rgb{clamp(*r), clamp(*g), clamp(*b)};
+    return targets;
+}
 
-    const auto snap = m_sharedState.snapshot();
+bool CommandExecutor::sendFixtureColors(
+    const std::vector<std::pair<const Client::Fixture *, Utils::Colors::RGB>>
+        &targets) {
     std::map<int, std::array<uint8_t, 512>> buffers; // universe → DMX frame
 
-    // Fill the fixture's footprint starting at its (1-based) DMX address with
-    // the R,G,B triplet repeated across each 3-channel LED.
-    auto fill = [&](const Client::Fixture &f) {
-        auto &buf = buffers[f.universe];
-        const int start = f.address; // firmware DMX address is 0-based
+    // Fill the fixture's footprint starting at its DMX address with the R,G,B
+    // triplet repeated across each 3-channel LED.
+    for (const auto &[f, rgb] : targets) {
+        auto &buf = buffers[f->universe];
+        const int start = f->address; // firmware DMX address is 0-based
         if (start < 0 || start >= 512)
-            return;
-        const int count = std::min(f.footprint, 512 - start);
+            continue;
+        const int count = std::min(f->footprint, 512 - start);
         if (count <= 0)
-            return;
+            continue;
         for (auto led :
              std::span(buf).subspan(start, count) | std::views::chunk(3))
             std::ranges::copy_n(rgb.rgb,
                                 static_cast<std::ptrdiff_t>(led.size()),
                                 led.begin());
-    };
-
-    // Target the selection; with nothing selected, fill every fixture.
-    if (!m_selection.empty()) {
-        for (const auto &[sel, fx] : m_selection.resolved(snap))
-            fill(*fx);
-    } else {
-        for (const auto &[ip, client] : snap)
-            for (const auto &f : client.fixtures)
-                fill(f);
     }
 
+    return sendBuffers(buffers);
+}
+
+bool CommandExecutor::sendBuffers(
+    std::map<int, std::array<uint8_t, 512>> &buffers) {
     if (buffers.empty()) {
         log.error("No fixtures to set");
         return false;
@@ -622,10 +631,86 @@ bool CommandExecutor::setcolor(const Args &args) {
 
     if (sent == 0)
         return false;
-    log.println("{}✓{} color ({}{}, {}, {}{}) → {}{}{} universe(s)",
-                Theme::ok(), Theme::r(), Theme::val(), rgb.r, rgb.g, rgb.b,
-                Theme::r(), Theme::val(), sent, Theme::r());
+    log.println("{}✓{} color → {}{}{} universe(s)", Theme::ok(), Theme::r(),
+                Theme::val(), sent, Theme::r());
     return true;
+}
+
+static uint8_t clampU8(int v) {
+    return static_cast<uint8_t>(std::max(0, std::min(255, v)));
+}
+
+bool CommandExecutor::setcolor(const Args &args) {
+    auto r = args.getInt(1), g = args.getInt(2), b = args.getInt(3);
+    if (!r || !g || !b) {
+        log.error("Usage: setcolor <r> <g> <b>");
+        return false;
+    }
+    const Utils::Colors::RGB rgb{clampU8(*r), clampU8(*g), clampU8(*b)};
+
+    const auto snap = m_sharedState.snapshot();
+    std::vector<std::pair<const Client::Fixture *, Utils::Colors::RGB>> targets;
+    for (const auto *f : colorTargets(m_selection, snap))
+        targets.emplace_back(f, rgb);
+    return sendFixtureColors(targets);
+}
+
+// setfan <r1> <g1> <b1> <r2> <g2> <b2>: spread a color gradient from color A to
+// color B across every RGB pixel of the targeted fixtures (per pixel, not per
+// fixture). The pixels are walked in fixture order, so a pixel strip fades
+// smoothly along its length and a chain of fixtures fades across the whole set.
+bool CommandExecutor::setfan(const Args &args) {
+    auto r1 = args.getInt(1), g1 = args.getInt(2), b1 = args.getInt(3);
+    auto r2 = args.getInt(4), g2 = args.getInt(5), b2 = args.getInt(6);
+    if (!r1 || !g1 || !b1 || !r2 || !g2 || !b2) {
+        log.error("Usage: setfan <r1> <g1> <b1> <r2> <g2> <b2>");
+        return false;
+    }
+    const Utils::Colors::RGB a{clampU8(*r1), clampU8(*g1), clampU8(*b1)};
+    const Utils::Colors::RGB b{clampU8(*r2), clampU8(*g2), clampU8(*b2)};
+
+    const auto snap = m_sharedState.snapshot();
+    const auto fixtures = colorTargets(m_selection, snap);
+
+    // Each fixture's footprint clamped to its universe frame, in whole 3-channel
+    // pixels. Collected first so we know the total pixel count for interpolation.
+    struct Span {
+        std::array<uint8_t, 512> *buf;
+        int start;  // first channel
+        int pixels; // number of 3-channel LEDs
+    };
+    std::map<int, std::array<uint8_t, 512>> buffers; // universe → DMX frame
+    std::vector<Span> spans;
+    std::size_t total = 0;
+    for (const auto *f : fixtures) {
+        const int start = f->address;
+        if (start < 0 || start >= 512)
+            continue;
+        const int count = std::min(f->footprint, 512 - start);
+        const int pixels = count / 3;
+        if (pixels <= 0)
+            continue;
+        spans.push_back({&buffers[f->universe], start, pixels});
+        total += pixels;
+    }
+    if (total == 0) {
+        log.error("No fixtures to set");
+        return false;
+    }
+
+    // Walk a global pixel index across all spans, interpolating A→B.
+    std::size_t p = 0;
+    for (const auto &s : spans) {
+        for (int i = 0; i < s.pixels; ++i, ++p) {
+            const float t = total > 1 ? static_cast<float>(p) / (total - 1) : 0.f;
+            const uint8_t rgb[3] = {
+                clampU8(static_cast<int>(a.r + (b.r - a.r) * t)),
+                clampU8(static_cast<int>(a.g + (b.g - a.g) * t)),
+                clampU8(static_cast<int>(a.b + (b.b - a.b) * t))};
+            std::ranges::copy_n(rgb, 3, s.buf->begin() + s.start + i * 3);
+        }
+    }
+    return sendBuffers(buffers);
 }
 
 bool CommandExecutor::reboot(const Args &) {

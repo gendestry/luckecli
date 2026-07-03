@@ -27,7 +27,9 @@ namespace ui
 
     private:
         std::function<bool(const std::string &)> m_command;
-        std::shared_ptr<HSVPicker> m_picker; // HSV color state + sliders
+        std::shared_ptr<HSVPicker> m_picker;  // color A (solid, or fan start)
+        std::shared_ptr<HSVPicker> m_pickerB; // color B (fan end)
+        int m_mode = 0;                       // 0 = solid, 1 = fan
     };
 
 }

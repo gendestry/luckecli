@@ -112,9 +112,9 @@ namespace ui
         });
 
         auto layout = Container::Horizontal({tabs, viewBar});
-        // Include `status` in the tree so its hoverable counts receive mouse
-        // events (the visual layout is still driven by the renderer below).
-        auto root = Container::Vertical({layout, status});
+        // Include the status bar in the tree so its hoverable counts receive
+        // mouse events (the visual layout is still driven by the renderer below).
+        auto root = Container::Vertical({layout, status.component});
         auto renderer = Renderer(root, [this, tabs, viewButtons, exitButton, status]
                                  {
             // View buttons at the top, Exit pushed to the bottom of the column.
@@ -124,11 +124,13 @@ namespace ui
                 exitButton->Render(),
             });
 
-            return vbox({
-                       hbox({tabs->Render() | flex, bar}) | flex,
-                       status->Render(),
-                   }) |
-                   flex; });
+            auto content = vbox({
+                hbox({tabs->Render() | flex, bar}) | flex,
+                status.component->Render(),
+            }) | flex;
+
+            // Layer the hovered fixture-name list on top of everything.
+            return dbox({content, status.overlay()}) | flex; });
 
         auto with_keys = CatchEvent(renderer, [this, &onCommand, &screen](Event event)
                                     {
