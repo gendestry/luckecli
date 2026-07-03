@@ -1,5 +1,6 @@
 #pragma once
 #include <array>
+#include <atomic>
 #include <map>
 #include <string>
 #include <vector>
@@ -30,7 +31,8 @@ namespace core::commands
         using Selection = core::Selection;
 
     private:
-        Log log;
+        Log log{"cmd"};
+        std::atomic<bool> m_colorEcho{true}; // gate the color-send confirmation log
         SharedState &m_sharedState;
         ui::Display &m_display;
         Registry m_registry;
@@ -144,6 +146,12 @@ namespace core::commands
         // Touched only on the command/UI thread, like selectIndex().
         void selectAll();
         void clearSelection();
+
+        // Suppress the "✓ color → N universe(s)" confirmation that setcolor/setfan
+        // emit on every send. The control view mutes it while dragging the HSV
+        // sliders (which fire dozens of sends) and logs its own start→end summary
+        // instead. Restored to true when the gesture ends.
+        void setColorEcho(bool on) { m_colorEcho = on; }
 
         // Tokenize, resolve and dispatch a single line. Returns the handler's
         // result (false on unknown/invalid command).

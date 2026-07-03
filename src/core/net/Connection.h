@@ -13,7 +13,7 @@ namespace core::net
     // destructor closes the fd on every path. Non-copyable, movable.
     class Connection
     {
-        Log logger;
+        Log logger{"conn"};
         std::string ip_;
         uint16_t port_;
         int sock_ = -1;

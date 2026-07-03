@@ -1,4 +1,5 @@
 #include "GradientSlider.h"
+#include "ui/Theme.h"
 
 #include <ftxui/dom/canvas.hpp>
 
@@ -36,7 +37,7 @@ Element GradientSliderBase::OnRender() {
       col = Color::RGB(rgb.r, rgb.g, rgb.b);
     } else {
       bool filled = vertical() ? i >= pos : i <= pos;
-      col = filled ? Color::GrayLight : Color::GrayDark;
+      col = filled ? Theme::trackLit() : Theme::trackDim();
     }
     if (vertical())
       for (int px = 0; px < kW; ++px) c.DrawBlock(px, i, true, col);
@@ -54,7 +55,7 @@ Element GradientSliderBase::OnRender() {
     if (ty > kH - 4) ty = kH - 4;
     for (int py = ty; py < ty + 4; ++py)
       for (int px = 0; px < kW; ++px)
-        c.DrawBlock(px, py, true, Color::GrayLight);
+        c.DrawBlock(px, py, true, Theme::trackLit());
     // Centre the text on the band. Count display columns (skip UTF-8
     // continuation bytes) so multibyte glyphs like '°' don't offset it.
     int cols = 0;
@@ -62,7 +63,7 @@ Element GradientSliderBase::OnRender() {
       if ((ch & 0xC0) != 0x80) ++cols;
     int tx = (kW - cols * 2) / 2;
     if (tx < 0) tx = 0;
-    c.DrawText(tx, ty, txt, Color::Black);
+    c.DrawText(tx, ty, txt, Theme::black());
   } else {
     // Thumb: a vertical band across the height, snapped to the cell grid
     // (2 px per cell) so it is always exactly one cell wide.
@@ -71,7 +72,7 @@ Element GradientSliderBase::OnRender() {
     if (tx > kW - 2) tx = kW - 2;
     for (int px = tx; px < tx + 2; ++px)
       for (int py = 0; py < kH; ++py)
-        c.DrawBlock(px, py, true, Color::GrayLight);
+        c.DrawBlock(px, py, true, Theme::trackLit());
   }
 
   auto track = canvas(std::move(c));

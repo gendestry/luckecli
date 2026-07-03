@@ -1,4 +1,5 @@
 #include "ui/components/homescreen/infopanel/FixtureListing.h"
+#include "ui/Theme.h"
 #include "ui/components/homescreen/infopanel/InfoStyle.h"
 #include "core/domain/SharedState.h"
 
@@ -14,17 +15,17 @@ namespace ui
         {
             if (fixtureId < 0 || fixtureId >= static_cast<int>(client.fixtures.size()))
                 return text(" fixture " + std::to_string(fixtureId) + " on " + ip + " is gone") |
-                       color(Color::RGB(210, 100, 100));
+                       color(Theme::errColor());
 
             const auto &f = client.fixtures[fixtureId];
 
             Elements rows;
             rows.push_back(hbox({
-                text(f.name) | bold | color(Color::RGB(190, 160, 230)),
+                text(f.name) | bold | color(Theme::accent()),
                 text("  "),
-                text(f.type) | color(Color::RGB(130, 130, 130)),
+                text(f.type) | color(Theme::muted()),
             }));
-            rows.push_back(hbox({infoLabel("  ip        "), text(ip) | color(Color::RGB(140, 170, 210))}));
+            rows.push_back(hbox({infoLabel("  ip        "), text(ip) | color(Theme::ipColor())}));
             rows.push_back(hbox({infoLabel("  universe  "), infoValue(std::to_string(f.universe))}));
             rows.push_back(hbox({infoLabel("  address   "), infoValue(std::to_string(f.address))}));
             rows.push_back(hbox({infoLabel("  footprint "), infoValue(std::to_string(f.footprint))}));
@@ -54,7 +55,7 @@ namespace ui
 
             const core::Client *client = findClient(clients, sel.ip);
             if (!client)
-                blocks.push_back(text(" " + sel.ip + " offline") | color(Color::RGB(210, 100, 100)));
+                blocks.push_back(text(" " + sel.ip + " offline") | color(Theme::errColor()));
             else
                 blocks.push_back(fixtureBlock(*client, sel.ip, sel.fixtureId));
         }

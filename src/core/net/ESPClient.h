@@ -25,7 +25,7 @@ namespace core
         using ResponseHandler = std::function<void(std::optional<std::string>)>;
 
     private:
-        Log logger;
+        Log logger{"esp"};
 
         SharedState &m_sharedState;
         std::string ip_; // value, not a reference into the clients map

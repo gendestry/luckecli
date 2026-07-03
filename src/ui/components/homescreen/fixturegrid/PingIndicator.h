@@ -2,6 +2,8 @@
 #include <ftxui/dom/elements.hpp>
 #include <ftxui/screen/color.hpp>
 
+#include "ui/Theme.h"
+
 namespace ui
 {
 
@@ -10,8 +12,8 @@ namespace ui
     inline ftxui::Element pingSquare(bool online)
     {
         using namespace ftxui;
-        return text("■") | color(online ? Color::RGB(90, 200, 110)
-                                         : Color::RGB(210, 100, 100));
+        return text("■") | color(online ? Theme::okColor()
+                                         : Theme::errColor());
     }
 
 }

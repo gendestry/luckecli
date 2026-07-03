@@ -37,10 +37,11 @@ namespace ui
         struct Line
         {
             Loggable::Type type;
+            std::string scope; // origin of the log entry (empty == none)
             std::string text;
         };
 
-        void pushLine(Loggable::Type type, std::string text);
+        void pushLine(Loggable::Type type, std::string scope, std::string text);
 
         core::commands::CommandExecutor *&m_exec;
         std::function<bool(const std::string &)> m_command;
@@ -57,6 +58,9 @@ namespace ui
         // during the previous render, used to highlight the hovered scrollback line.
         int m_mouseX = -1, m_mouseY = -1;
         std::vector<ftxui::Box> m_lineBoxes;
+
+        // Collapse the scrollback so the input has the whole panel to itself.
+        bool m_showHistory = true;
     };
 
 }

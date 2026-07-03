@@ -41,6 +41,7 @@ namespace ui
         m_home.setCommandSink(onCommand);
         m_terminal.setCommandSink(onCommand);
         m_control.setCommandSink(onCommand);
+        m_control.setExec(m_exec);
 
         auto home = m_home.component();
         auto universe = m_universe.component();

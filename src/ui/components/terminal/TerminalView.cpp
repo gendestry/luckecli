@@ -1,5 +1,6 @@
 #include "ui/components/terminal/TerminalView.h"
 #include "core/commands/CommandExecutor.h"
+#include "ui/components/menubar/Menubar.h"
 #include "ui/Theme.h"
 
 #include <ftxui/component/component.hpp>
@@ -76,12 +77,12 @@ namespace ui
                         else if (p == 3) italic_ = true;
                         else if (p == 22) { bold_ = dim_ = false; }
                         else if (p == 23) italic_ = false;
-                        else if (p == 30) fg = Color::RGB(0, 0, 0);
-                        else if (p == 31) fg = Color::RGB(210, 100, 100);
-                        else if (p == 32) fg = Color::RGB(90, 200, 110);
-                        else if (p == 33) fg = Color::RGB(220, 190, 100);
-                        else if (p == 34) fg = Color::RGB(140, 170, 210);
-                        else if (p == 35) fg = Color::RGB(190, 160, 230);
+                        else if (p == 30) fg = Theme::black();
+                        else if (p == 31) fg = Theme::errColor();
+                        else if (p == 32) fg = Theme::okColor();
+                        else if (p == 33) fg = Theme::valColor();
+                        else if (p == 34) fg = Theme::ipColor();
+                        else if (p == 35) fg = Theme::accent();
                         else if (p == 39) fg = def;
                         else if ((p == 38 || p == 48) && k + 4 < params.size() && params[k + 1] == 2)
                         {
@@ -108,12 +109,25 @@ namespace ui
         return hbox(std::move(segs));
     }
 
+    // A fixed-width, right-aligned "[scope]" tag so messages line up in a column.
+    // Color comes from the theme's per-scope palette so each source is distinct.
+    static Element scopeTag(const std::string &scope)
+    {
+        constexpr int kWidth = 10; // includes the brackets
+        std::string tag = scope.empty() ? "" : "[" + scope + "]";
+        if (static_cast<int>(tag.size()) > kWidth)
+            tag = tag.substr(0, kWidth);
+        std::string pad(kWidth - static_cast<int>(tag.size()), ' ');
+        Element e = text(pad + tag);
+        return scope.empty() ? (e | dim) : (e | color(Theme::scopeColor(scope)) | bold);
+    }
+
     TerminalView::TerminalView(core::commands::CommandExecutor *&exec) : m_exec(exec) {}
 
-    void TerminalView::pushLine(Loggable::Type type, std::string text)
+    void TerminalView::pushLine(Loggable::Type type, std::string scope, std::string text)
     {
         std::lock_guard lock(m_mutex);
-        m_lines.push_back({type, std::move(text)});
+        m_lines.push_back({type, std::move(scope), std::move(text)});
         if (m_lines.size() > kMaxLines)
             m_lines.erase(m_lines.begin(), m_lines.begin() + (m_lines.size() - kMaxLines));
     }
@@ -129,7 +143,7 @@ namespace ui
             std::size_t nl = msg.find('\n', start);
             std::string piece = msg.substr(start, nl == std::string::npos ? std::string::npos : nl - start);
             if (!piece.empty())
-                pushLine(entry.type, std::move(piece));
+                pushLine(entry.type, entry.scope, std::move(piece));
             if (nl == std::string::npos)
                 break;
             start = nl + 1;
@@ -151,7 +165,7 @@ namespace ui
                 return;
             std::string cmd = m_input;
             m_input.clear();
-            pushLine(Loggable::PRINT, "> " + cmd);
+            pushLine(Loggable::PRINT, "you", "> " + cmd);
             if (m_command)
                 std::thread([this, cmd = std::move(cmd)]()
                             { m_command(cmd); })
@@ -159,11 +173,24 @@ namespace ui
         };
         auto input = Input(opt);
 
+        // Menubar actions: collapse the scrollback (giving the input the whole
+        // panel), wipe it, or jump back to the newest line.
+        auto menubar = Menubar({
+            {"History", [this] { m_showHistory = !m_showHistory; }, nullptr,
+             [this] { return m_showHistory; }},
+            {"Clear", [this] { std::lock_guard lock(m_mutex); m_lines.clear(); m_scroll = 0; }, nullptr, nullptr},
+            {"Bottom", [this] { std::lock_guard lock(m_mutex); m_scroll = 0; }, nullptr, nullptr},
+        });
+
+        // The menubar and input both take focus/clicks; the renderer below draws
+        // them along with the scrollback.
+        auto container = Container::Vertical({menubar, input});
+
         // Renderer delegates events to `input` (so it can type/submit) while
-        // drawing the scrollback above it. A `focus` marker on the anchor line,
-        // combined with focusPositionRelative(0,1), keeps that line pinned to the
-        // bottom of the scroll frame; m_scroll chooses which line is the anchor.
-        auto view = Renderer(input, [this, input]
+        // drawing the scrollback above it. A `focus` marker on the anchor line
+        // keeps that line pinned to the bottom of the scroll frame; m_scroll
+        // chooses which line is the anchor.
+        auto view = Renderer(container, [this, input, menubar]
                         {
             Elements lines;
             int anchor = 0;
@@ -193,12 +220,14 @@ namespace ui
                 for (int i = 0; i < count; ++i)
                 {
                     const auto &l = m_lines[i];
-                    Color def = l.type == Loggable::ERROR ? Color::RGB(210, 100, 100)
-                                : l.type == Loggable::DEBUG ? Color::RGB(140, 140, 140)
-                                                            : Color::RGB(200, 200, 210);
-                    Element e = parseAnsiLine(l.text, def) | reflect(m_lineBoxes[i]);
+                    Color def = l.type == Loggable::ERROR ? Theme::errColor()
+                                : l.type == Loggable::DEBUG ? Theme::debugColor()
+                                                            : Theme::text();
+                    Element e = hbox({scopeTag(l.scope), text(" "),
+                                      parseAnsiLine(l.text, def) | flex}) |
+                                reflect(m_lineBoxes[i]);
                     if (i == hovered)
-                        e = e | bgcolor(Color::RGB(45, 45, 60));
+                        e = e | bgcolor(Theme::bgHover());
                     if (i == anchor)
                         e = e | focus; // yframe scrolls this line into view
                     lines.push_back(e);
@@ -213,16 +242,18 @@ namespace ui
             auto history = vbox(std::move(lines)) |
                            yframe | vscroll_indicator | flex;
 
-            return vbox({
-                       window(text(" Terminal ") | bold | color(Theme::windowTitle()),
-                              history | flex) |
-                           flex,
-                       hbox({
-                           text(" > ") | bold | color(Theme::windowTitle()),
-                           input->Render() | flex,
-                       }),
-                   }) |
-                   flex; });
+            Elements rows;
+            rows.push_back(menubar->Render() | bgcolor(Theme::bgBar()));
+            if (m_showHistory)
+                rows.push_back(window(text(" Terminal ") | bold | color(Theme::windowTitle()),
+                                      history | flex) |
+                               flex);
+            rows.push_back(hbox({
+                text(" > ") | bold | color(Theme::windowTitle()),
+                input->Render() | flex,
+            }));
+
+            return vbox(std::move(rows)) | flex; });
 
         // Intercept scroll gestures before the input sees them so the user can walk
         // back through history. Mouse wheel and Page/Ctrl-arrow keys adjust the

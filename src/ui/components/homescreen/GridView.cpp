@@ -145,7 +145,7 @@ namespace ui
 
         auto renderer = Renderer(layout, [this, menubar, toolbar]
                                  {
-            auto bar = menubar->Render() | bgcolor(Color::RGB(30, 30, 40));
+            auto bar = menubar->Render() | bgcolor(Theme::bgBar());
 
             auto fixtures = window(
                 text(" Online Fixtures ") | bold | color(accent()),
@@ -185,7 +185,7 @@ namespace ui
                            universeGrid(m_state, sel),
                            text(" u / esc to close") | dim | center,
                        })) |
-                   bgcolor(Color::RGB(20, 20, 28)); });
+                   bgcolor(Theme::bgPopup()); });
 
         auto root = renderer | Modal(universePopup, &m_showUniverse);
 

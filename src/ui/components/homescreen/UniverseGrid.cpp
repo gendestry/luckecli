@@ -84,11 +84,11 @@ namespace ui
             {
                 const int ch = r * kCols + col;
                 if (conflict[ch])
-                    cells.push_back(text("█") | color(Color::RGB(220, 80, 80)));
+                    cells.push_back(text("█") | color(Theme::errStrong()));
                 else if (owner[ch] >= 0)
                     cells.push_back(text("█") | color(slotColor(owner[ch])));
                 else
-                    cells.push_back(text("·") | color(Color::RGB(60, 60, 70)));
+                    cells.push_back(text("·") | color(Theme::border()));
             }
             rows.push_back(hbox(std::move(cells)));
         }

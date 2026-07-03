@@ -1,4 +1,5 @@
 #include "ui/components/homescreen/infopanel/FixtureEditor.h"
+#include "ui/Theme.h"
 #include "ui/components/homescreen/infopanel/InfoStyle.h"
 
 #include <ftxui/component/component_options.hpp>
@@ -124,14 +125,14 @@ namespace ui
 
         Elements rows;
         rows.push_back(hbox({
-            text(fx.name) | bold | color(Color::RGB(190, 160, 230)),
+            text(fx.name) | bold | color(Theme::accent()),
             text("  "),
-            text(fx.type) | color(Color::RGB(130, 130, 130)),
+            text(fx.type) | color(Theme::muted()),
             filler(), // push the engine version to the far right
             text(client.engine.version.empty() ? "?" : client.engine.version) |
-                color(Color::RGB(130, 130, 130)),
+                color(Theme::muted()),
         }));
-        rows.push_back(hbox({infoLabel("  ip        "), text(ip) | color(Color::RGB(140, 170, 210))}));
+        rows.push_back(hbox({infoLabel("  ip        "), text(ip) | color(Theme::ipColor())}));
         rows.push_back(editRow("  name      ", m_nameInput));
         rows.push_back(editRow("  universe  ", m_universeInput));
         rows.push_back(editRow("  address   ", m_addressInput));

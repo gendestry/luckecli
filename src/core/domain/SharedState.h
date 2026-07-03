@@ -22,7 +22,7 @@ namespace core
 
     class SharedState
     {
-        Log log;
+        Log log{"state"};
         std::unordered_map<std::string, Client> clients;
         std::mutex mutex;
 

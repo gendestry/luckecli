@@ -1,4 +1,5 @@
 #include "ui/components/homescreen/infopanel/ApplyRevertBar.h"
+#include "ui/Theme.h"
 
 #include <ftxui/component/component_options.hpp>
 
@@ -20,7 +21,7 @@ namespace ui
             {
                 auto e = text(" " + glyph + " ") | color(c);
                 if (s.focused)
-                    e = e | bgcolor(Color::RGB(40, 40, 55)) | bold;
+                    e = e | bgcolor(Theme::bgFocus()) | bold;
                 return e;
             };
             return Button(opt);
@@ -32,8 +33,8 @@ namespace ui
                                    std::function<bool()> dirty)
         : m_dirty(std::move(dirty))
     {
-        m_apply = iconBtn("✓", Color::RGB(90, 200, 110), std::move(onApply));   // ✓ commit
-        m_revert = iconBtn("↻", Color::RGB(220, 160, 90), std::move(onRevert)); // ↻ discard
+        m_apply = iconBtn("✓", Theme::okColor(), std::move(onApply));   // ✓ commit
+        m_revert = iconBtn("↻", Theme::warnColor(), std::move(onRevert)); // ↻ discard
         m_container = Container::Horizontal({m_apply, m_revert});
     }
 
@@ -46,7 +47,7 @@ namespace ui
             text("  "),
             m_revert->Render(),
             filler(),
-            text(dirty ? "edited " : "") | color(Color::RGB(220, 160, 90)),
+            text(dirty ? "edited " : "") | color(Theme::warnColor()),
         });
     }
 

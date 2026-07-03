@@ -1,4 +1,5 @@
 #include "ui/components/homescreen/infopanel/InfoPanel.h"
+#include "ui/Theme.h"
 #include "core/domain/SharedState.h"
 
 #include <ftxui/component/component_options.hpp>
@@ -12,8 +13,8 @@ namespace ui
 
     namespace
     {
-        Element label(const std::string &s) { return text(s) | color(Color::RGB(80, 190, 190)); }
-        Element value(const std::string &s) { return text(s) | color(Color::RGB(220, 190, 100)); }
+        Element label(const std::string &s) { return text(s) | color(Theme::lblColor()); }
+        Element value(const std::string &s) { return text(s) | color(Theme::valColor()); }
 
         // The live client for `ip` in a fresh snapshot, or nullptr if it's offline.
         const core::Client *findClient(const std::vector<std::pair<std::string, core::Client>> &clients,
@@ -30,16 +31,16 @@ namespace ui
         Element rssiBadge(int rssi, bool connected)
         {
             if (!connected)
-                return text("offline") | color(Color::RGB(210, 100, 100));
+                return text("offline") | color(Theme::errColor());
             const char *bars = rssi >= -55 ? "▁▃▅▇"
                                : rssi >= -67 ? "▁▃▅ "
                                : rssi >= -78 ? "▁▃  "
                                              : "▁   ";
-            auto c = rssi >= -67 ? Color::RGB(90, 200, 110)
-                     : rssi >= -78 ? Color::RGB(220, 190, 100)
-                                   : Color::RGB(210, 100, 100);
+            auto c = rssi >= -67 ? Theme::okColor()
+                     : rssi >= -78 ? Theme::valColor()
+                                   : Theme::errColor();
             return hbox({text(bars) | color(c), text(" "),
-                         text(std::to_string(rssi) + "dB") | color(Color::RGB(130, 130, 130))});
+                         text(std::to_string(rssi) + "dB") | color(Theme::muted())});
         }
 
         // One fixture's full read-only block (name header + details). Used by the
@@ -48,17 +49,17 @@ namespace ui
         {
             if (fixtureId < 0 || fixtureId >= static_cast<int>(client.fixtures.size()))
                 return text(" fixture " + std::to_string(fixtureId) + " on " + ip + " is gone") |
-                       color(Color::RGB(210, 100, 100));
+                       color(Theme::errColor());
 
             const auto &f = client.fixtures[fixtureId];
 
             Elements rows;
             rows.push_back(hbox({
-                text(f.name) | bold | color(Color::RGB(190, 160, 230)),
+                text(f.name) | bold | color(Theme::accent()),
                 text("  "),
-                text(f.type) | color(Color::RGB(130, 130, 130)),
+                text(f.type) | color(Theme::muted()),
             }));
-            rows.push_back(hbox({label("  ip        "), text(ip) | color(Color::RGB(140, 170, 210))}));
+            rows.push_back(hbox({label("  ip        "), text(ip) | color(Theme::ipColor())}));
             rows.push_back(hbox({label("  universe  "), value(std::to_string(f.universe))}));
             rows.push_back(hbox({label("  address   "), value(std::to_string(f.address))}));
             rows.push_back(hbox({label("  footprint "), value(std::to_string(f.footprint))}));
@@ -71,11 +72,11 @@ namespace ui
         Element fixtureDetail(const core::Client &client, const std::string &ip, int fixtureId)
         {
             if (fixtureId < 0 || fixtureId >= static_cast<int>(client.fixtures.size()))
-                return text("     fixture is gone") | color(Color::RGB(210, 100, 100));
+                return text("     fixture is gone") | color(Theme::errColor());
 
             const auto &f = client.fixtures[fixtureId];
             Elements rows;
-            rows.push_back(hbox({label("     ip        "), text(ip) | color(Color::RGB(140, 170, 210))}));
+            rows.push_back(hbox({label("     ip        "), text(ip) | color(Theme::ipColor())}));
             rows.push_back(hbox({label("     universe  "), value(std::to_string(f.universe))}));
             rows.push_back(hbox({label("     address   "), value(std::to_string(f.address))}));
             rows.push_back(hbox({label("     footprint "), value(std::to_string(f.footprint))}));
@@ -88,8 +89,8 @@ namespace ui
             auto e = s.element;
             if (s.is_placeholder)
                 e = e | dim;
-            e = e | color(Color::RGB(220, 190, 100));
-            e = e | bgcolor(s.focused ? Color::RGB(60, 60, 85) : Color::RGB(40, 40, 55));
+            e = e | color(Theme::valColor());
+            e = e | bgcolor(s.focused ? Theme::bgSelected() : Theme::bgFocus());
             return e | size(WIDTH, GREATER_THAN, 10);
         }
     }
@@ -153,13 +154,13 @@ namespace ui
             {
                 auto e = text(" " + glyph + " ") | color(c);
                 if (s.focused)
-                    e = e | bgcolor(Color::RGB(40, 40, 55)) | bold;
+                    e = e | bgcolor(Theme::bgFocus()) | bold;
                 return e;
             };
             return Button(opt);
         };
-        m_applyBtn = iconBtn("✓", Color::RGB(90, 200, 110), [this] { applyEdits(); });   // ✔ check
-        m_revertBtn = iconBtn("↻", Color::RGB(220, 160, 90), [this] { revertEdits(); }); // ↺ undo
+        m_applyBtn = iconBtn("✓", Theme::okColor(), [this] { applyEdits(); });   // ✔ check
+        m_revertBtn = iconBtn("↻", Theme::warnColor(), [this] { revertEdits(); }); // ↺ undo
 
         // Engine toggles commit on change. sync() only writes the bound bools
         // (which doesn't fire on_change), so toggling here always reflects a real
@@ -202,8 +203,8 @@ namespace ui
         passOpt.on_enter = [this] { applyWifi(); };
         m_passwordInput = Input(passOpt);
 
-        m_wifiApplyBtn = iconBtn("✓", Color::RGB(90, 200, 110), [this] { applyWifi(); });
-        m_wifiRevertBtn = iconBtn("↻", Color::RGB(220, 160, 90), [this] { revertWifi(); });
+        m_wifiApplyBtn = iconBtn("✓", Theme::okColor(), [this] { applyWifi(); });
+        m_wifiRevertBtn = iconBtn("↻", Theme::warnColor(), [this] { revertWifi(); });
 
         // Section headers: clickable buttons that flip the matching fold flag. The
         // arrow glyph reflects the live state via the captured flag pointer.
@@ -214,9 +215,9 @@ namespace ui
             opt.transform = [title, open](const EntryState &s)
             {
                 auto e = text(std::string(*open ? "▾ " : "▸ ") + title) |
-                         color(Color::RGB(80, 190, 190)) | bold;
+                         color(Theme::lblColor()) | bold;
                 if (s.focused)
-                    e = e | bgcolor(Color::RGB(40, 40, 55));
+                    e = e | bgcolor(Theme::bgFocus());
                 return e;
             };
             return Button(opt);
@@ -296,9 +297,9 @@ namespace ui
             {
                 auto it = m_collapsed.find(k);
                 const bool collapsed = it != m_collapsed.end() && it->second;
-                auto e = text(collapsed ? " ▸ " : " ▾ ") | color(Color::RGB(80, 190, 190)) | bold;
+                auto e = text(collapsed ? " ▸ " : " ▾ ") | color(Theme::lblColor()) | bold;
                 if (s.focused)
-                    e = e | bgcolor(Color::RGB(40, 40, 55));
+                    e = e | bgcolor(Theme::bgFocus());
                 return e;
             };
             auto btn = Button(opt);
@@ -476,23 +477,23 @@ namespace ui
                 if (valid)
                 {
                     const auto &f = client->fixtures[s.fixtureId];
-                    hdr.push_back(text(f.name) | bold | color(Color::RGB(190, 160, 230)));
+                    hdr.push_back(text(f.name) | bold | color(Theme::accent()));
                     hdr.push_back(text("  "));
-                    hdr.push_back(text(f.type) | color(Color::RGB(130, 130, 130)));
+                    hdr.push_back(text(f.type) | color(Theme::muted()));
                 }
                 else
                 {
                     hdr.push_back(text("fixture " + std::to_string(s.fixtureId)) |
-                                  color(Color::RGB(210, 100, 100)));
+                                  color(Theme::errColor()));
                 }
                 hdr.push_back(filler());
-                hdr.push_back(text(s.ip) | color(Color::RGB(140, 170, 210)));
+                hdr.push_back(text(s.ip) | color(Theme::ipColor()));
                 blocks.push_back(hbox(std::move(hdr)));
 
                 if (!collapsed)
                 {
                     if (!client)
-                        blocks.push_back(text("     offline") | color(Color::RGB(210, 100, 100)));
+                        blocks.push_back(text("     offline") | color(Theme::errColor()));
                     else
                         blocks.push_back(fixtureDetail(*client, s.ip, s.fixtureId));
                 }
@@ -534,19 +535,19 @@ namespace ui
 
         // Title line: fixture name + type, with the engine version pinned right.
         rows.push_back(hbox({
-            text(fx.name) | bold | color(Color::RGB(190, 160, 230)),
+            text(fx.name) | bold | color(Theme::accent()),
             text("  "),
-            text(fx.type) | color(Color::RGB(130, 130, 130)),
+            text(fx.type) | color(Theme::muted()),
             filler(),
             text(client->engine.version.empty() ? "?" : client->engine.version) |
-                color(Color::RGB(130, 130, 130)),
+                color(Theme::muted()),
         }));
 
         // ── Fixture ──────────────────────────────────────────────
         rows.push_back(headerRow(m_fixtureHdr));
         if (m_openFixture)
         {
-            rows.push_back(hbox({label("  ip        "), text(sel.ip) | color(Color::RGB(140, 170, 210))}));
+            rows.push_back(hbox({label("  ip        "), text(sel.ip) | color(Theme::ipColor())}));
             rows.push_back(editRow("  name      ", m_nameInput));
             rows.push_back(editRow("  universe  ", m_universeInput));
             rows.push_back(editRow("  address   ", m_addressInput));
@@ -566,7 +567,7 @@ namespace ui
                 text("  "),
                 m_revertBtn->Render(),
                 filler(),
-                text(dirty ? "edited " : "") | color(Color::RGB(220, 160, 90)),
+                text(dirty ? "edited " : "") | color(Theme::warnColor()),
             }));
         }
 
@@ -581,7 +582,7 @@ namespace ui
 
         // ── WiFi ─────────────────────────────────────────────────
         Element wifiSummary = hbox({
-            text(client->wifi.ssid.empty() ? "—" : client->wifi.ssid) | color(Color::RGB(140, 170, 210)),
+            text(client->wifi.ssid.empty() ? "—" : client->wifi.ssid) | color(Theme::ipColor()),
             text("  "),
             rssiBadge(client->wifi.rssi, client->wifi.connected),
         });
@@ -590,8 +591,8 @@ namespace ui
         {
             rows.push_back(hbox({label("  status    "),
                                  client->wifi.connected
-                                     ? text("● connected") | color(Color::RGB(90, 200, 110))
-                                     : text("○ offline") | color(Color::RGB(210, 100, 100))}));
+                                     ? text("● connected") | color(Theme::okColor())
+                                     : text("○ offline") | color(Theme::errColor())}));
             rows.push_back(hbox({label("  signal    "), rssiBadge(client->wifi.rssi, client->wifi.connected)}));
             rows.push_back(editRow("  ssid      ", m_ssidInput));
             rows.push_back(editRow("  password  ", m_passwordInput));
@@ -603,7 +604,7 @@ namespace ui
                 text("  "),
                 m_wifiRevertBtn->Render(),
                 filler(),
-                text(dirty ? "edited " : "") | color(Color::RGB(220, 160, 90)),
+                text(dirty ? "edited " : "") | color(Theme::warnColor()),
             }));
         }
 
@@ -629,7 +630,7 @@ namespace ui
 
             const core::Client *client = findClient(clients, sel.ip);
             if (!client)
-                blocks.push_back(text(" " + sel.ip + " offline") | color(Color::RGB(210, 100, 100)));
+                blocks.push_back(text(" " + sel.ip + " offline") | color(Theme::errColor()));
             else
                 blocks.push_back(fixtureBlock(*client, sel.ip, sel.fixtureId));
         }

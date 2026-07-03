@@ -1,4 +1,5 @@
 #include "ui/components/homescreen/PresetDropdown.h"
+#include "ui/Theme.h"
 #include "core/domain/SharedState.h"
 #include "core/commands/CommandExecutor.h"
 
@@ -34,11 +35,11 @@ namespace ui
         opt.transform = [](const EntryState &s)
         {
             auto e = text((s.state ? " ● " : "   ") + s.label);
-            e = e | color(s.state ? Color::RGB(90, 200, 110) : Color::RGB(185, 185, 195));
+            e = e | color(s.state ? Theme::okColor() : Theme::trackLit());
             if (s.state)
                 e = e | bold;
             if (s.active)
-                e = e | bgcolor(Color::RGB(40, 40, 55));
+                e = e | bgcolor(Theme::bgFocus());
             return e;
         };
 
@@ -104,7 +105,7 @@ namespace ui
     Element PresetDropdown::render() const
     {
         auto label = [](const std::string &s)
-        { return text(s) | color(Color::RGB(80, 190, 190)); };
+        { return text(s) | color(Theme::lblColor()); };
 
         if (m_active)
             return vbox({label("  preset"), hbox({text("  "), m_collapsible->Render()})});
@@ -112,7 +113,7 @@ namespace ui
         if (m_single && m_numPresets > 0)
             return hbox({label("  preset    "),
                          text(std::to_string(m_selected) + " / " + std::to_string(m_numPresets)) |
-                             color(Color::RGB(220, 190, 100)),
+                             color(Theme::valColor()),
                          text("   describe to list") | dim});
 
         return text("");

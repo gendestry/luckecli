@@ -18,7 +18,7 @@ namespace core
         bool inited = false;
         std::thread ingest_thread;
 
-        Log logger;
+        Log logger{"heartbeat"};
         core::SharedState &m_sharedState;
 
         void start();

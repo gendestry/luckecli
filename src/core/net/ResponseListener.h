@@ -18,7 +18,7 @@ namespace core::net
 
     class ResponseListener
     {
-        Log logger;
+        Log logger{"resp"};
         std::thread listen_thread;
         std::atomic<bool> running{true};
 

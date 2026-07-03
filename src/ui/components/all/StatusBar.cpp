@@ -1,4 +1,5 @@
 #include "ui/components/all/StatusBar.h"
+#include "ui/Theme.h"
 
 #include <ftxui/component/component.hpp>
 #include <ftxui/dom/elements.hpp>
@@ -16,13 +17,13 @@ namespace ui
         Element namesList(const std::string &title,
                           const std::vector<std::string> &names)
         {
-            Elements rows{text(title) | bold | color(Color::RGB(130, 130, 130))};
+            Elements rows{text(title) | bold | color(Theme::muted())};
             if (names.empty())
-                rows.push_back(text("(none)") | color(Color::RGB(90, 90, 100)));
+                rows.push_back(text("(none)") | color(Theme::trackDim()));
             for (const auto &n : names)
-                rows.push_back(text(n) | color(Color::RGB(190, 160, 230)));
+                rows.push_back(text(n) | color(Theme::accent()));
             return vbox(std::move(rows)) | border |
-                   bgcolor(Color::RGB(30, 30, 40));
+                   bgcolor(Theme::bgBar());
         }
     } // namespace
 
@@ -37,16 +38,16 @@ namespace ui
                                   {
             const int online = model.onlineFixtures ? model.onlineFixtures() : 0;
             return hbox({
-                text(" " + std::to_string(online)) | color(Color::RGB(90, 200, 110)),
-                text(" online") | color(Color::RGB(130, 130, 130)),
+                text(" " + std::to_string(online)) | color(Theme::okColor()),
+                text(" online") | color(Theme::muted()),
             }); });
 
         auto selectedSeg = Renderer([model]
                                     {
             const int selected = model.selected ? model.selected() : 0;
             return hbox({
-                text(std::to_string(selected)) | color(Color::RGB(220, 190, 100)),
-                text(" selected") | color(Color::RGB(130, 130, 130)),
+                text(std::to_string(selected)) | color(Theme::valColor()),
+                text(" selected") | color(Theme::muted()),
             }); });
 
         onlineSeg = Hoverable(onlineSeg, onlineHover.get());
@@ -60,18 +61,18 @@ namespace ui
             if (model.hints)
                 for (const auto &[key, what] : model.hints())
                 {
-                    hintEls.push_back(text(key) | color(Color::RGB(190, 160, 230)));
-                    hintEls.push_back(text(" " + what + "  ") | color(Color::RGB(110, 110, 120)));
+                    hintEls.push_back(text(key) | color(Theme::accent()));
+                    hintEls.push_back(text(" " + what + "  ") | color(Theme::faint()));
                 }
 
             return hbox({
                        onlineSeg->Render(),
-                       text("  ·  ") | color(Color::RGB(80, 80, 90)),
+                       text("  ·  ") | color(Theme::disabled()),
                        selectedSeg->Render(),
                        filler(),
                        hbox(std::move(hintEls)),
                    }) |
-                   bgcolor(Color::RGB(24, 24, 30)); });
+                   bgcolor(Theme::bgPanel()); });
 
         // Floating name list, layered over everything and anchored bottom-left,
         // one row above the bar. Empty when nothing is hovered.

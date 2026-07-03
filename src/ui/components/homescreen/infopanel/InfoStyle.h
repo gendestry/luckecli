@@ -7,6 +7,7 @@
 #include <ftxui/dom/elements.hpp>
 
 #include "core/domain/Client.h"
+#include "ui/Theme.h"
 
 // Small rendering helpers shared by the Info panel's sub-components (the editor,
 // the engine section, and the read-only listing). Kept header-only since they're
@@ -15,12 +16,12 @@ namespace ui
 {
     inline ftxui::Element infoLabel(const std::string &s)
     {
-        return ftxui::text(s) | ftxui::color(ftxui::Color::RGB(80, 190, 190));
+        return ftxui::text(s) | ftxui::color(Theme::lblColor());
     }
 
     inline ftxui::Element infoValue(const std::string &s)
     {
-        return ftxui::text(s) | ftxui::color(ftxui::Color::RGB(220, 190, 100));
+        return ftxui::text(s) | ftxui::color(Theme::valColor());
     }
 
     // The live client for `ip` in a fresh snapshot, or nullptr if it's offline.
@@ -40,8 +41,8 @@ namespace ui
         auto e = s.element;
         if (s.is_placeholder)
             e = e | dim;
-        e = e | color(Color::RGB(220, 190, 100));
-        e = e | bgcolor(s.focused ? Color::RGB(60, 60, 85) : Color::RGB(40, 40, 55));
+        e = e | color(Theme::valColor());
+        e = e | bgcolor(s.focused ? Theme::bgSelected() : Theme::bgFocus());
         return e | size(WIDTH, GREATER_THAN, 10);
     }
 }

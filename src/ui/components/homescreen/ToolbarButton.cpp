@@ -1,4 +1,5 @@
 #include "ui/components/homescreen/ToolbarButton.h"
+#include "ui/Theme.h"
 
 #include <ftxui/component/component_options.hpp>
 #include <ftxui/dom/elements.hpp>
@@ -28,10 +29,10 @@ namespace ui
         {
             const bool on = !enabled || enabled();
             const bool lit = active && active(); // toggle / armed state
-            const Color fg = !on        ? Color::RGB(80, 80, 90)     // disabled
-                             : lit       ? Color::RGB(90, 200, 110)   // engaged
-                             : s.focused ? Color::RGB(190, 160, 230)  // focused
-                                         : Color::RGB(180, 180, 190); // idle
+            const Color fg = !on        ? Theme::disabled()     // disabled
+                             : lit       ? Theme::okColor()   // engaged
+                             : s.focused ? Theme::accent()  // focused
+                                         : Theme::textIdle(); // idle
             const std::string txt = labelFn ? labelFn() : label;
 
             auto e = text(txt);
@@ -44,7 +45,7 @@ namespace ui
             auto box = hbox({filler(), e, filler()}) |
                        size(WIDTH, EQUAL, width) | border | color(fg);
             if (s.focused && on)
-                box = box | bgcolor(Color::RGB(40, 40, 55));
+                box = box | bgcolor(Theme::bgFocus());
             return box;
         };
 

@@ -1,4 +1,5 @@
 #include "ui/components/homescreen/fixturegrid/FixtureCard.h"
+#include "ui/Theme.h"
 #include "ui/components/homescreen/fixturegrid/PingIndicator.h"
 
 #include <ftxui/dom/elements.hpp>
@@ -26,18 +27,18 @@ ftxui::Component FixtureCard(const FixtureCardData &data,
     lines.push_back(hbox({
         pingSquare(online),
         text(" "),
-        text(name) | bold | color(Color::RGB(190, 160, 230)),
+        text(name) | bold | color(Theme::accent()),
         filler(),
-        text(std::to_string(index)) | color(Color::RGB(100, 100, 100)),
+        text(std::to_string(index)) | color(Theme::faint()),
     }));
     if (!type.empty())
-      lines.push_back(text(type) | color(Color::RGB(130, 130, 130)));
+      lines.push_back(text(type) | color(Theme::muted()));
     lines.push_back(filler());
     lines.push_back(hbox({
-        text(ip) | color(Color::RGB(140, 170, 210)),
+        text(ip) | color(Theme::ipColor()),
         filler(),
         text("Uni: " + std::to_string(universe)) |
-            color(Color::RGB(130, 130, 130)),
+            color(Theme::muted()),
     }));
 
     auto card = vbox(std::move(lines)) | size(WIDTH, EQUAL, 28) |
@@ -45,8 +46,8 @@ ftxui::Component FixtureCard(const FixtureCardData &data,
 
     // Selection (green) is the only card highlight; the keyboard focus ring is
     // intentionally not drawn, so no card looks picked before the user acts.
-    const Color border = selected ? Color::RGB(90, 200, 110)
-                                   : Color::RGB(50, 50, 60);
+    const Color border = selected ? Theme::okColor()
+                                   : Theme::bgRaised();
     return card | borderStyled(ROUNDED, border);
   };
 

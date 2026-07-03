@@ -631,8 +631,9 @@ bool CommandExecutor::sendBuffers(
 
     if (sent == 0)
         return false;
-    log.println("{}✓{} color → {}{}{} universe(s)", Theme::ok(), Theme::r(),
-                Theme::val(), sent, Theme::r());
+    if (m_colorEcho)
+        log.println("{}✓{} color → {}{}{} universe(s)", Theme::ok(), Theme::r(),
+                    Theme::val(), sent, Theme::r());
     return true;
 }
 
