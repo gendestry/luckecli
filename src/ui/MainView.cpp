@@ -1,6 +1,6 @@
 #include "ui/MainView.h"
 #include "ui/components/homescreen/Toolbar.h"
-#include "ui/components/homescreen/StatusBar.h"
+#include "ui/components/all/StatusBar.h"
 #include "core/commands/CommandExecutor.h"
 
 #include <ftxui/component/screen_interactive.hpp>
@@ -64,8 +64,58 @@ namespace ui
         });
         auto viewBar = Container::Vertical({viewButtons, exitButton});
 
+        // Bottom status bar: live counts + the shortcuts for the current view.
+        auto status = StatusBar({
+            .onlineFixtures = [this] { return m_home.onlineCount(); },
+            .selected = [this] { return m_exec ? static_cast<int>(m_exec->selection().size()) : 0; },
+            .onlineNames = [this]
+            {
+                std::vector<std::string> names;
+                for (const auto &[ip, client] : m_state.snapshot())
+                    for (const auto &f : client.fixtures)
+                        names.push_back(f.name);
+                return names;
+            },
+            .selectedNames = [this]
+            {
+                std::vector<std::string> names;
+                if (m_exec)
+                    for (const auto &[sel, fx] : m_exec->selection().resolved(m_state.snapshot()))
+                        names.push_back(fx->name);
+                return names;
+            },
+            .hints = [this]
+            {
+                std::vector<std::pair<std::string, std::string>> hints{
+                    {"1-4", "views"},
+                };
+                if (m_view == 0)
+                {
+                    hints.push_back({"click", "select"});
+                    hints.push_back({"shift+click", "add"});
+                    hints.push_back({"m", "multi"});
+                    hints.push_back({"a", "all"});
+                    hints.push_back({"c", "clear"});
+                }
+                else if (m_view == 2)
+                {
+                    hints.push_back({"enter", "run"});
+                }
+                else if (m_view == 3)
+                {
+                    hints.push_back({"←/→", "adjust"});
+                    hints.push_back({"enter", "apply"});
+                }
+                hints.push_back({"esc", m_view == 0 ? "exit" : "back"});
+                return hints;
+            },
+        });
+
         auto layout = Container::Horizontal({tabs, viewBar});
-        auto renderer = Renderer(layout, [this, tabs, viewButtons, exitButton]
+        // Include `status` in the tree so its hoverable counts receive mouse
+        // events (the visual layout is still driven by the renderer below).
+        auto root = Container::Vertical({layout, status});
+        auto renderer = Renderer(root, [this, tabs, viewButtons, exitButton, status]
                                  {
             // View buttons at the top, Exit pushed to the bottom of the column.
             auto bar = vbox({
@@ -74,35 +124,9 @@ namespace ui
                 exitButton->Render(),
             });
 
-            // Status bar shown under every view: live counts on the left, the
-            // shortcuts for the current view on the right.
-            const int online = m_home.onlineCount();
-            const int selected = m_exec ? static_cast<int>(m_exec->selection().size()) : 0;
-            std::vector<std::pair<std::string, std::string>> hints{
-                {"1-4", "views"},
-            };
-            if (m_view == 0)
-            {
-                hints.push_back({"click", "select"});
-                hints.push_back({"shift+click", "add"});
-                hints.push_back({"m", "multi"});
-                hints.push_back({"a", "all"});
-                hints.push_back({"c", "clear"});
-            }
-            else if (m_view == 2)
-            {
-                hints.push_back({"enter", "run"});
-            }
-            else if (m_view == 3)
-            {
-                hints.push_back({"←/→", "adjust"});
-                hints.push_back({"enter", "apply"});
-            }
-            hints.push_back({"esc", m_view == 0 ? "exit" : "back"});
-
             return vbox({
                        hbox({tabs->Render() | flex, bar}) | flex,
-                       statusBar(online, selected, hints),
+                       status->Render(),
                    }) |
                    flex; });
 
