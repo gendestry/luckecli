@@ -221,7 +221,7 @@ namespace ui
             // Keyboard shortcuts for the multi-select menubar actions. Selection
             // changes are frozen while a command runs off-thread (m_busy).
             if (event == Event::Character('m')) { m_multiMode = !m_multiMode;          if (m_refresh) m_refresh(); return true; }
-            if (event == Event::Character('a')) { if (!m_busy && m_exec) m_exec->selectAll();      if (m_refresh) m_refresh(); return true; }
+            if (event == Event::Character('a') || event == Event::CtrlA) { if (!m_busy && m_exec) m_exec->selectAll();      if (m_refresh) m_refresh(); return true; }
             if (event == Event::Character('c')) { if (!m_busy && m_exec) m_exec->clearSelection(); if (m_refresh) m_refresh(); return true; }
 
             return false; });

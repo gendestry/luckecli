@@ -4,6 +4,8 @@
 
 #include <ftxui/component/component.hpp>
 #include <ftxui/component/component_options.hpp>
+#include <ftxui/component/event.hpp>
+#include <ftxui/component/mouse.hpp>
 #include <ftxui/dom/elements.hpp>
 
 #include <thread>
@@ -158,26 +160,58 @@ namespace ui
         auto input = Input(opt);
 
         // Renderer delegates events to `input` (so it can type/submit) while
-        // drawing the scrollback above it. focusPositionRelative(0,1) keeps the
-        // newest lines pinned to the bottom of the scroll frame.
-        return Renderer(input, [this, input]
+        // drawing the scrollback above it. A `focus` marker on the anchor line,
+        // combined with focusPositionRelative(0,1), keeps that line pinned to the
+        // bottom of the scroll frame; m_scroll chooses which line is the anchor.
+        auto view = Renderer(input, [this, input]
                         {
             Elements lines;
+            int anchor = 0;
             {
                 std::lock_guard lock(m_mutex);
-                for (const auto &l : m_lines)
+                // Clamp the offset in case lines were trimmed since the last event.
+                const int count = static_cast<int>(m_lines.size());
+                if (m_scroll > count - 1)
+                    m_scroll = count > 0 ? count - 1 : 0;
+                if (m_scroll < 0)
+                    m_scroll = 0;
+                anchor = count - 1 - m_scroll;
+
+                // Which line is under the cursor? Resolve against last frame's
+                // boxes, then resize to match this frame's line count so reflect()
+                // can re-capture them below (references must stay valid, so size
+                // before creating the elements that hold them).
+                int hovered = -1;
+                for (int i = 0; i < static_cast<int>(m_lineBoxes.size()) && i < count; ++i)
+                    if (m_lineBoxes[i].Contain(m_mouseX, m_mouseY))
+                    {
+                        hovered = i;
+                        break;
+                    }
+                m_lineBoxes.assign(count, Box{});
+
+                for (int i = 0; i < count; ++i)
                 {
+                    const auto &l = m_lines[i];
                     Color def = l.type == Loggable::ERROR ? Color::RGB(210, 100, 100)
                                 : l.type == Loggable::DEBUG ? Color::RGB(140, 140, 140)
                                                             : Color::RGB(200, 200, 210);
-                    lines.push_back(parseAnsiLine(l.text, def));
+                    Element e = parseAnsiLine(l.text, def) | reflect(m_lineBoxes[i]);
+                    if (i == hovered)
+                        e = e | bgcolor(Color::RGB(45, 45, 60));
+                    if (i == anchor)
+                        e = e | focus; // yframe scrolls this line into view
+                    lines.push_back(e);
                 }
             }
             if (lines.empty())
                 lines.push_back(text(" no output yet") | dim);
 
+            // yframe scrolls to keep the `focus`-marked anchor line visible. We do
+            // NOT use focusPositionRelative here: it would force the frame to a
+            // fixed relative position and ignore the anchor, defeating scrolling.
             auto history = vbox(std::move(lines)) |
-                           focusPositionRelative(0.f, 1.f) | yframe | vscroll_indicator | flex;
+                           yframe | vscroll_indicator | flex;
 
             return vbox({
                        window(text(" Terminal ") | bold | color(Theme::windowTitle()),
@@ -189,6 +223,38 @@ namespace ui
                        }),
                    }) |
                    flex; });
+
+        // Intercept scroll gestures before the input sees them so the user can walk
+        // back through history. Mouse wheel and Page/Ctrl-arrow keys adjust the
+        // offset; everything else (typing, Enter) falls through to the input.
+        return CatchEvent(view, [this](Event e)
+                          {
+            auto scroll = [this](int delta)
+            {
+                std::lock_guard lock(m_mutex);
+                const int count = static_cast<int>(m_lines.size());
+                m_scroll += delta;
+                if (m_scroll < 0)
+                    m_scroll = 0;
+                if (m_scroll > count - 1)
+                    m_scroll = count > 0 ? count - 1 : 0;
+            };
+
+            if (e.is_mouse())
+            {
+                // Remember the cursor position so the renderer can highlight the
+                // hovered scrollback line.
+                m_mouseX = e.mouse().x;
+                m_mouseY = e.mouse().y;
+                if (e.mouse().button == Mouse::WheelUp) { scroll(3); return true; }
+                if (e.mouse().button == Mouse::WheelDown) { scroll(-3); return true; }
+                return false;
+            }
+            if (e == Event::PageUp) { scroll(10); return true; }
+            if (e == Event::PageDown) { scroll(-10); return true; }
+            if (e == Event::CtrlP || e == Event::ArrowUpCtrl) { scroll(1); return true; }
+            if (e == Event::CtrlN || e == Event::ArrowDownCtrl) { scroll(-1); return true; }
+            return false; });
     }
 
 }

@@ -2,6 +2,8 @@
 #include "ui/Panel.h"
 #include "support/log/Loggable.h"
 
+#include <ftxui/screen/box.hpp>
+
 #include <functional>
 #include <mutex>
 #include <string>
@@ -46,6 +48,15 @@ namespace ui
 
         mutable std::mutex m_mutex; // guards m_lines
         std::vector<Line> m_lines;
+
+        // Scrollback offset in lines, counted from the bottom. 0 pins the view to
+        // the newest line (and auto-follows new output); >0 scrolls up into history.
+        int m_scroll = 0;
+
+        // Last known mouse position (screen coords) and the per-line boxes captured
+        // during the previous render, used to highlight the hovered scrollback line.
+        int m_mouseX = -1, m_mouseY = -1;
+        std::vector<ftxui::Box> m_lineBoxes;
     };
 
 }

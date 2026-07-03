@@ -372,6 +372,19 @@ namespace ui
         }
 
         const auto sel = m_exec->selection();
+        if (sel.size() <= 1)
+        {
+            // Leaving multi-selection: drop the fold-header buttons so they don't
+            // linger in the component tree (and hold focus) once the multi listing
+            // is hidden. rebuildMulti() only ever adds; nothing else clears them.
+            if (!m_multiKeys.empty())
+            {
+                m_multiKeys.clear();
+                m_multiHeaders.clear();
+                m_multiContainer->DetachAllChildren();
+            }
+        }
+
         if (sel.empty())
         {
             m_ip.clear();

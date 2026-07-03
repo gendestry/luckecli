@@ -51,13 +51,25 @@ namespace ui
         // each panel keeps its state across switches.
         auto tabs = Container::Tab({home, universe, terminal, control}, &m_view);
 
+        // Switch to a view AND move focus into it. Without the TakeFocus(), a
+        // container only routes keyboard events to its active child — so after
+        // clicking a viewBar button (which makes the bar the active child) the
+        // per-view shortcuts stop reaching the view. Re-focusing the view's
+        // component restores the event path through tabs → view.
+        auto views = std::vector<Component>{home, universe, terminal, control};
+        auto setView = [this, views](int v)
+        {
+            m_view = v;
+            views[v]->TakeFocus();
+        };
+
         // View switcher down the far-right edge; the active view's button lights
         // up. Exit sits at the bottom, separated from the view buttons.
         auto viewButtons = Toolbar({
-            {"Home", [this] { m_view = 0; }, nullptr, [this] { return m_view == 0; }},
-            {"Uni", [this] { m_view = 1; }, nullptr, [this] { return m_view == 1; }},
-            {"Term", [this] { m_view = 2; }, nullptr, [this] { return m_view == 2; }},
-            {"Ctrl", [this] { m_view = 3; }, nullptr, [this] { return m_view == 3; }},
+            {"Home", [setView] { setView(0); }, nullptr, [this] { return m_view == 0; }},
+            {"Uni", [setView] { setView(1); }, nullptr, [this] { return m_view == 1; }},
+            {"Term", [setView] { setView(2); }, nullptr, [this] { return m_view == 2; }},
+            {"Ctrl", [setView] { setView(3); }, nullptr, [this] { return m_view == 3; }},
         });
         auto exitButton = Toolbar({
             {"Exit", [&onCommand, &screen] { onCommand("exit"); screen.Exit(); }, nullptr, nullptr},
@@ -92,7 +104,7 @@ namespace ui
                 if (m_view == 0)
                 {
                     hints.push_back({"click", "select"});
-                    hints.push_back({"shift+click", "add"});
+                    hints.push_back({"ctrl+click", "add"});
                     hints.push_back({"m", "multi"});
                     hints.push_back({"a", "all"});
                     hints.push_back({"c", "clear"});
@@ -132,22 +144,22 @@ namespace ui
             // Layer the hovered fixture-name list on top of everything.
             return dbox({content, status.overlay()}) | flex; });
 
-        auto with_keys = CatchEvent(renderer, [this, &onCommand, &screen](Event event)
+        auto with_keys = CatchEvent(renderer, [this, &onCommand, &screen, setView](Event event)
                                     {
             // Digit keys switch views, but only when the active panel isn't taking
             // text input (so you can still type digits in the terminal / fields).
             if (event.is_character() && !typingText())
             {
-                if (event == Event::Character('1')) { m_view = 0; return true; }
-                if (event == Event::Character('2')) { m_view = 1; return true; }
-                if (event == Event::Character('3')) { m_view = 2; return true; }
-                if (event == Event::Character('4')) { m_view = 3; return true; }
+                if (event == Event::Character('1')) { setView(0); return true; }
+                if (event == Event::Character('2')) { setView(1); return true; }
+                if (event == Event::Character('3')) { setView(2); return true; }
+                if (event == Event::Character('4')) { setView(3); return true; }
             }
 
             // Escape backs out to Home; from Home it exits the app.
             if (event == Event::Escape)
             {
-                if (m_view != 0) { m_view = 0; return true; }
+                if (m_view != 0) { setView(0); return true; }
                 onCommand("exit"); // routes through CommandExecutor → Display::quit()
                 screen.Exit();
                 return true;
