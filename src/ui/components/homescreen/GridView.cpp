@@ -5,6 +5,7 @@
 #include "ui/components/homescreen/UniverseGrid.h"
 #include "core/domain/SharedState.h"
 #include "core/commands/CommandExecutor.h"
+#include "ui/Theme.h"
 
 #include <ftxui/component/screen_interactive.hpp>
 #include <ftxui/component/event.hpp>
@@ -18,7 +19,7 @@ namespace ui
 
     // A function (not a namespace-scope constant): Color::RGB queries FTXUI's
     // terminal globals, which aren't constructed yet during static init.
-    static Color accent() { return Color::RGB(100, 150, 220); }
+    static Color accent() { return Theme::windowTitle(); }
 
     GridView::GridView(core::SharedState &state, core::commands::CommandExecutor *&exec)
         : m_state(state), m_exec(exec), m_grid(state, exec), m_info(state, exec), m_presets(state, exec) {}

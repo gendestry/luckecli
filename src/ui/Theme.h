@@ -1,6 +1,8 @@
 #pragma once
 #include "Utils/Colors/Font.h"
 
+#include <ftxui/screen/color.hpp>
+
 namespace Theme {
     inline auto dim()     { return Utils::Font::colorByRGB(130, 130, 130); }
     inline auto lbl()     { return Utils::Font::colorByRGB(80, 190, 190); }
@@ -12,4 +14,7 @@ namespace Theme {
     inline auto ok()      { return Utils::Font::colorByRGB(90, 200, 110); }
     inline auto err()     { return Utils::Font::colorByRGB(210, 100, 100); }
     inline auto r()       { return Utils::Font::colorReset; }
+
+    // FTXUI colors (for TUI components). windowTitle matches heading().
+    inline ftxui::Color windowTitle() { return ftxui::Color::RGB(100, 150, 220); }
 }

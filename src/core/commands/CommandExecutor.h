@@ -6,6 +6,7 @@
 #include "core/commands/Registry.h"
 #include "core/commands/Args.h"
 #include "core/domain/SharedState.h"
+#include "core/domain/Selection.h"
 
 namespace ui
 {
@@ -22,11 +23,9 @@ namespace core::commands
     {
     public:
         // A selected fixture = a device IP plus a fixture id within it.
-        struct Selection
-        {
-            std::string ip;
-            int fixtureId;
-        };
+        // Defined in core/domain/Selection.h; aliased here so existing
+        // CommandExecutor::Selection references keep resolving.
+        using Selection = core::Selection;
 
     private:
         Log log;
@@ -34,9 +33,9 @@ namespace core::commands
         ui::Display &m_display;
         Registry m_registry;
 
-        // The selection is a list so commands can target many fixtures at once;
+        // The selection: a set of fixtures commands can target at once;
         // empty selection == "unselected" mode.
-        std::vector<Selection> m_selection;
+        core::SelectionSet m_selection;
 
         bool m_exit = false;
 
@@ -115,7 +114,7 @@ namespace core::commands
         // Selection accessors for frontends (e.g. the FTXUI grid marking which
         // cards are selected). Only touched on the command/UI thread.
         bool isSelected() const { return !m_selection.empty(); }
-        const std::vector<Selection> &selection() const { return m_selection; }
+        const core::SelectionSet &selection() const { return m_selection; }
 
         // Shared command history, oldest first. Read by the CLI for up/down
         // recall and by the TUI to display an activity log.

@@ -1,5 +1,6 @@
 #include "ui/components/terminal/TerminalView.h"
 #include "core/commands/CommandExecutor.h"
+#include "ui/Theme.h"
 
 #include <ftxui/component/component.hpp>
 #include <ftxui/component/component_options.hpp>
@@ -179,11 +180,11 @@ namespace ui
                            focusPositionRelative(0.f, 1.f) | yframe | vscroll_indicator | flex;
 
             return vbox({
-                       window(text(" Terminal ") | bold | color(Color::RGB(100, 150, 220)),
+                       window(text(" Terminal ") | bold | color(Theme::windowTitle()),
                               history | flex) |
                            flex,
                        hbox({
-                           text(" > ") | bold | color(Color::RGB(100, 150, 220)),
+                           text(" > ") | bold | color(Theme::windowTitle()),
                            input->Render() | flex,
                        }),
                    }) |

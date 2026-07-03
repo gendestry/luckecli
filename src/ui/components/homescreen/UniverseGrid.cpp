@@ -1,5 +1,6 @@
 #include "ui/components/homescreen/UniverseGrid.h"
 #include "core/domain/SharedState.h"
+#include "ui/Theme.h"
 
 #include <array>
 
@@ -93,7 +94,7 @@ namespace ui
         }
 
         auto title = text(universe >= 0 ? " Universe " + std::to_string(universe) : " Universe —") |
-                     color(Color::RGB(80, 190, 190));
+                     bold | color(Theme::windowTitle());
 
         return vbox({
             title,

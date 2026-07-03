@@ -446,7 +446,7 @@ namespace ui
             Elements blocks;
             for (std::size_t i = 0; i < sel.size(); ++i)
             {
-                const auto &s = sel[i];
+                const auto &s = sel.items()[i];
                 const std::string key = keyOf(s.ip, s.fixtureId);
                 auto it = m_collapsed.find(key);
                 const bool collapsed = it != m_collapsed.end() && it->second;
@@ -489,7 +489,7 @@ namespace ui
 
         // ── Zero selection / offline single fixture: read-only fallback ──────
         if (!m_active || !m_exec)
-            return scrolled(infoListing(m_state, m_exec ? m_exec->selection()
+            return scrolled(infoListing(m_state, m_exec ? m_exec->selection().items()
                                                         : std::vector<core::commands::CommandExecutor::Selection>{}));
 
         // ── Single fixture: editable, sectioned form ─────────────────────────
