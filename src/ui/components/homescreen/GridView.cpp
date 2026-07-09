@@ -206,6 +206,12 @@ namespace ui
                 if (event.mouse().button == Mouse::WheelDown) { m_info.scroll(1); return true; }
             }
 
+            // While a text field is focused, let all keystrokes fall through to the
+            // input — otherwise character shortcuts (a/c/m/u) would hijack typing,
+            // e.g. pressing 'a' mid-rename would select all fixtures.
+            if (editing())
+                return false;
+
             // Universe popup: 'u' toggles it; while open, Escape just closes it.
             if (event == Event::Character('u') && m_exec && m_exec->isSelected())
             {
