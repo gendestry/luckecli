@@ -10,3 +10,6 @@
 [submodule "lib/libMVRgdtf"]
 	path = lib/libMVRgdtf
 	url = https://github.com/mvrdevelopment/libMVRgdtf
+[submodule "lib/LightEngine"]
+	path = lib/LightEngine
+	url = git@github.com:gendestry/LightEngine.git
