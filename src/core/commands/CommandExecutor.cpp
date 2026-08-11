@@ -8,7 +8,7 @@
 #include "core/net/ESPClient.h"
 #include "support/util/JSONtemp.h"
 #include "ui/Display.h"
-#include "ui/Theme.h"
+#include "support/term/Theme.h"
 
 #include <algorithm>
 #include <array>

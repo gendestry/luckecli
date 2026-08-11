@@ -32,22 +32,33 @@ set(BUILD_MVR_XCHANGE FALSE CACHE BOOL "" FORCE)
 set(UNITTEST FALSE CACHE BOOL "" FORCE)
 add_subdirectory(lib/libMVRgdtf)
 
-# CONFIGURE_DEPENDS makes the build re-glob when files are added/moved/removed,
-# so the source list never goes stale (e.g. after a restructure) without a
-# manual reconfigure. Costs a cheap glob check on each build.
-file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS src/*.cpp)
+# ── Engine library ─────────────────────────────────────────────────────────
+# The reusable, frontend-agnostic core: domain model, command engine, device
+# networking, GDTF export, and support utilities. No ftxui dependency — the
+# only UI it knows about is the abstract ui::Display interface (header-only).
+# CONFIGURE_DEPENDS re-globs when files are added/moved/removed, so the source
+# list never goes stale after a restructure without a manual reconfigure.
+file(GLOB_RECURSE CORE_SOURCES CONFIGURE_DEPENDS
+        src/core/*.cpp
+        src/support/*.cpp)
 
-add_executable(${PROJECT_NAME} ${SOURCES})
-
-# Emit the built binary into bin/ at the project root regardless of the build dir.
-# set_target_properties(${PROJECT_NAME} PROPERTIES
-#         RUNTIME_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/bin)
-
-target_link_libraries(${PROJECT_NAME} PRIVATE utils nlohmann_json ftxui MvrGdtf)
-target_include_directories(${PROJECT_NAME}
+add_library(lucke_core STATIC ${CORE_SOURCES})
+target_link_libraries(lucke_core PUBLIC utils nlohmann_json MvrGdtf)
+target_include_directories(lucke_core
         PUBLIC
-        include
-        PRIVATE
+        ${PROJECT_SOURCE_DIR}/include
         ${PROJECT_SOURCE_DIR}/src
+        PRIVATE
         ${PROJECT_SOURCE_DIR}/lib/libMVRgdtf/src/Include
 )
+
+# ── CLI / TUI application ────────────────────────────────────────────────────
+# The frontend built on top of the engine: concrete displays and TUI
+# components (ftxui) plus the entry point.
+file(GLOB_RECURSE APP_SOURCES CONFIGURE_DEPENDS
+        src/ui/*.cpp
+        src/main.cpp)
+
+add_executable(${PROJECT_NAME} ${APP_SOURCES})
+target_link_libraries(${PROJECT_NAME} PRIVATE lucke_core ftxui)
+target_include_directories(${PROJECT_NAME} PRIVATE ${PROJECT_SOURCE_DIR}/src)
