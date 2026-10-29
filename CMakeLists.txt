@@ -26,7 +26,7 @@ endif()
 
 add_subdirectory(lib/json)
 add_subdirectory(lib/Utils)
-add_subdirectory(lib/FTXUI)
+#add_subdirectory(lib/FTXUI)
 
 # libMVRgdtf (GDTF/MVR read+write). Build the static lib with its bundled tinyXML
 # instead of xerces, and without MVR-xchange (which would require boost), so the
@@ -42,27 +42,27 @@ add_subdirectory(lib/libMVRgdtf)
 # only UI it knows about is the abstract ui::Display interface (header-only).
 # CONFIGURE_DEPENDS re-globs when files are added/moved/removed, so the source
 # list never goes stale after a restructure without a manual reconfigure.
-file(GLOB_RECURSE CORE_SOURCES CONFIGURE_DEPENDS
-        src/core/*.cpp
-        src/support/*.cpp)
-
-add_library(lucke_core STATIC ${CORE_SOURCES})
-target_link_libraries(lucke_core PUBLIC utils nlohmann_json MvrGdtf)
-target_include_directories(lucke_core
-        PUBLIC
-        ${PROJECT_SOURCE_DIR}/include
-        ${PROJECT_SOURCE_DIR}/src
-        PRIVATE
-        ${PROJECT_SOURCE_DIR}/lib/libMVRgdtf/src/Include
-)
+#file(GLOB_RECURSE CORE_SOURCES CONFIGURE_DEPENDS
+#        src/core/*.cpp
+#        src/support/*.cpp)
+#
+#add_library(lucke_core STATIC ${CORE_SOURCES})
+#target_link_libraries(lucke_core PUBLIC utils nlohmann_json MvrGdtf)
+#target_include_directories(lucke_core
+#        PUBLIC
+#        ${PROJECT_SOURCE_DIR}/include
+#        ${PROJECT_SOURCE_DIR}/src
+#        PRIVATE
+#        ${PROJECT_SOURCE_DIR}/lib/libMVRgdtf/src/Include
+#)
 
 # ── CLI / TUI application ────────────────────────────────────────────────────
 # The frontend built on top of the engine: concrete displays and TUI
 # components (ftxui) plus the entry point.
 file(GLOB_RECURSE APP_SOURCES CONFIGURE_DEPENDS
-        src/ui/*.cpp
+#        src/ui/*.cpp
         src/main.cpp)
 
 add_executable(${PROJECT_NAME} ${APP_SOURCES})
-target_link_libraries(${PROJECT_NAME} PRIVATE lucke_core ftxui)
-target_include_directories(${PROJECT_NAME} PRIVATE ${PROJECT_SOURCE_DIR}/src)
+#target_link_libraries(${PROJECT_NAME} PRIVATE lucke_core ftxui)
+#target_include_directories(${PROJECT_NAME} PRIVATE ${PROJECT_SOURCE_DIR}/src)

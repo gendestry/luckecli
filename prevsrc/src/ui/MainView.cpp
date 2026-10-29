@@ -1,0 +1,223 @@
+#include "ui/MainView.h"
+#include "ui/components/homescreen/Toolbar.h"
+#include "ui/components/all/StatusBar.h"
+#include "core/commands/CommandExecutor.h"
+
+#include <ftxui/component/screen_interactive.hpp>
+#include <ftxui/component/event.hpp>
+#include <ftxui/dom/elements.hpp>
+
+#include <atomic>
+#include <chrono>
+#include <thread>
+#include <utility>
+#include <vector>
+
+namespace ui
+{
+    using namespace ftxui;
+
+    MainView::MainView(core::SharedState &state, core::commands::CommandExecutor *&exec)
+        : m_state(state), m_exec(exec), m_home(state, exec), m_universe(state), m_terminal(exec), m_log(state, exec) {}
+
+    bool MainView::typingText() const
+    {
+        // The terminal is all input; the home view is typing only while an info
+        // field is focused. The universe view has no inputs.
+        if (m_view == 2)
+            return true;
+        if (m_view == 0)
+            return m_home.editing();
+        return false;
+    }
+
+    void MainView::run(std::function<bool(const std::string &)> &onCommand)
+    {
+        auto screen = App::Fullscreen();
+        m_app = &screen;
+
+        // Hand the panels what they need before building their components.
+        m_home.setScreen(&screen);
+        m_home.setCommandSink(onCommand);
+        m_terminal.setCommandSink(onCommand);
+        m_control.setCommandSink(onCommand);
+        m_control.setExec(m_exec);
+        m_log.setOnUpdate([this] { redraw(); });
+
+        auto home = m_home.component();
+        auto universe = m_universe.component();
+        auto terminal = m_terminal.component();
+        auto control = m_control.component();
+        auto log = m_log.component();
+
+        // Only the child at m_view renders and receives events; all stay alive, so
+        // each panel keeps its state across switches.
+        auto tabs = Container::Tab({home, universe, terminal, control, log}, &m_view);
+
+        // Switch to a view AND move focus into it. Without the TakeFocus(), a
+        // container only routes keyboard events to its active child — so after
+        // clicking a viewBar button (which makes the bar the active child) the
+        // per-view shortcuts stop reaching the view. Re-focusing the view's
+        // component restores the event path through tabs → view.
+        auto views = std::vector<Component>{home, universe, terminal, control, log};
+        auto setView = [this, views](int v)
+        {
+            m_view = v;
+            views[v]->TakeFocus();
+            if (v == 4)
+                m_log.poll(); // don't wait for the next tick
+        };
+
+        // View switcher down the far-right edge; the active view's button lights
+        // up. Exit sits at the bottom, separated from the view buttons.
+        auto viewButtons = Toolbar({
+            {"Home", [setView] { setView(0); }, nullptr, [this] { return m_view == 0; }},
+            {"Uni", [setView] { setView(1); }, nullptr, [this] { return m_view == 1; }},
+            {"Term", [setView] { setView(2); }, nullptr, [this] { return m_view == 2; }},
+            {"Ctrl", [setView] { setView(3); }, nullptr, [this] { return m_view == 3; }},
+            {"Log", [setView] { setView(4); }, nullptr, [this] { return m_view == 4; }},
+        });
+        auto exitButton = Toolbar({
+            {"Exit", [&onCommand, &screen] { onCommand("exit"); screen.Exit(); }, nullptr, nullptr},
+        });
+        auto viewBar = Container::Vertical({viewButtons, exitButton});
+
+        // Bottom status bar: live counts + the shortcuts for the current view.
+        auto status = StatusBar({
+            .onlineFixtures = [this] { return m_home.onlineCount(); },
+            .selected = [this] { return m_exec ? static_cast<int>(m_exec->selection().size()) : 0; },
+            .onlineNames = [this]
+            {
+                std::vector<std::string> names;
+                for (const auto &[ip, client] : m_state.snapshot())
+                    for (const auto &f : client.fixtures)
+                        names.push_back(f.name);
+                return names;
+            },
+            .selectedNames = [this]
+            {
+                std::vector<std::string> names;
+                if (m_exec)
+                    for (const auto &[sel, fx] : m_exec->selection().resolved(m_state.snapshot()))
+                        names.push_back(fx->name);
+                return names;
+            },
+            .hints = [this]
+            {
+                std::vector<std::pair<std::string, std::string>> hints{
+                    {"1-5", "views"},
+                };
+                if (m_view == 0)
+                {
+                    hints.push_back({"click", "select"});
+                    hints.push_back({"ctrl+click", "add"});
+                    hints.push_back({"m", "multi"});
+                    hints.push_back({"a", "all"});
+                    hints.push_back({"c", "clear"});
+                }
+                else if (m_view == 2)
+                {
+                    hints.push_back({"enter", "run"});
+                }
+                else if (m_view == 3)
+                {
+                    hints.push_back({"←/→", "adjust"});
+                    hints.push_back({"enter", "apply"});
+                }
+                else if (m_view == 4)
+                {
+                    hints.push_back({"↑/↓ wheel", "scroll"});
+                    hints.push_back({"end", "follow"});
+                    hints.push_back({"c", "clear"});
+                }
+                hints.push_back({"esc", m_view == 0 ? "exit" : "back"});
+                return hints;
+            },
+        });
+
+        auto layout = Container::Horizontal({tabs, viewBar});
+        // Include the status bar in the tree so its hoverable counts receive
+        // mouse events (the visual layout is still driven by the renderer below).
+        auto root = Container::Vertical({layout, status.component});
+        auto renderer = Renderer(root, [this, tabs, viewButtons, exitButton, status]
+                                 {
+            // View buttons at the top, Exit pushed to the bottom of the column.
+            auto bar = vbox({
+                viewButtons->Render(),
+                filler(),
+                exitButton->Render(),
+            });
+
+            auto content = vbox({
+                hbox({tabs->Render() | flex, bar}) | flex,
+                status.component->Render(),
+            }) | flex;
+
+            // Layer the hovered fixture-name list on top of everything.
+            return dbox({content, status.overlay()}) | flex; });
+
+        auto with_keys = CatchEvent(renderer, [this, &onCommand, &screen, setView](Event event)
+                                    {
+            // Digit keys switch views, but only when the active panel isn't taking
+            // text input (so you can still type digits in the terminal / fields).
+            if (event.is_character() && !typingText())
+            {
+                if (event == Event::Character('1')) { setView(0); return true; }
+                if (event == Event::Character('2')) { setView(1); return true; }
+                if (event == Event::Character('3')) { setView(2); return true; }
+                if (event == Event::Character('4')) { setView(3); return true; }
+                if (event == Event::Character('5')) { setView(4); return true; }
+            }
+
+            // Escape backs out to Home; from Home it exits the app.
+            if (event == Event::Escape)
+            {
+                if (m_view != 0) { setView(0); return true; }
+                onCommand("exit"); // routes through CommandExecutor → Display::quit()
+                screen.Exit();
+                return true;
+            }
+            return false; });
+
+        // Keep ping squares (and newly-discovered devices) fresh while up.
+        std::atomic<bool> ticking{true};
+        std::thread ticker([&]()
+                           {
+            int tick = 0;
+            while (ticking.load())
+            {
+                std::this_thread::sleep_for(std::chrono::seconds(1));
+                onStateChanged();
+                // Device log: fetch new lines every 2 s, only while it's shown.
+                if (m_view == 4 && ++tick % 2 == 0)
+                    m_log.poll();
+            } });
+
+        screen.Loop(with_keys);
+
+        ticking = false;
+        ticker.join();
+        m_home.setScreen(nullptr);
+        m_app = nullptr;
+    }
+
+    void MainView::onLog(const Loggable &entry)
+    {
+        m_terminal.onLog(entry);
+        redraw(); // thread-safe: posts a Custom event to repaint
+    }
+
+    void MainView::onStateChanged()
+    {
+        if (auto *s = m_app.load())
+        {
+            s->Post([this, s]()
+                    {
+                m_home.sync();
+                m_universe.sync();
+                m_terminal.sync();
+                s->PostEvent(Event::Custom); });
+        }
+    }
+
+}
