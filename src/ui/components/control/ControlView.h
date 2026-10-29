@@ -6,6 +6,7 @@
 
 #include <Utils/Colors/Colors.h>
 
+#include <chrono>
 #include <functional>
 #include <memory>
 #include <string>
@@ -44,6 +45,9 @@ namespace ui
         int m_mode = 0;                       // 0 = solid, 1 = fan
 
         bool m_dragging = false;              // a slider drag is in progress
+        std::chrono::steady_clock::time_point m_lastSend{}; // drag sends are throttled
+        bool m_sendPending = false;           // a change was skipped by the throttle
+        std::string m_lastCommand;            // last command sent, for the history
         Utils::Colors::RGB m_dragStartA{};    // color A when the drag began
         Utils::Colors::RGB m_dragStartB{};    // color B when the drag began
     };

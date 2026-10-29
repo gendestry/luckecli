@@ -18,7 +18,7 @@ namespace ui
     using namespace ftxui;
 
     MainView::MainView(core::SharedState &state, core::commands::CommandExecutor *&exec)
-        : m_state(state), m_exec(exec), m_home(state, exec), m_universe(state), m_terminal(exec) {}
+        : m_state(state), m_exec(exec), m_home(state, exec), m_universe(state), m_terminal(exec), m_log(state, exec) {}
 
     bool MainView::typingText() const
     {
@@ -42,26 +42,30 @@ namespace ui
         m_terminal.setCommandSink(onCommand);
         m_control.setCommandSink(onCommand);
         m_control.setExec(m_exec);
+        m_log.setOnUpdate([this] { redraw(); });
 
         auto home = m_home.component();
         auto universe = m_universe.component();
         auto terminal = m_terminal.component();
         auto control = m_control.component();
+        auto log = m_log.component();
 
         // Only the child at m_view renders and receives events; all stay alive, so
         // each panel keeps its state across switches.
-        auto tabs = Container::Tab({home, universe, terminal, control}, &m_view);
+        auto tabs = Container::Tab({home, universe, terminal, control, log}, &m_view);
 
         // Switch to a view AND move focus into it. Without the TakeFocus(), a
         // container only routes keyboard events to its active child — so after
         // clicking a viewBar button (which makes the bar the active child) the
         // per-view shortcuts stop reaching the view. Re-focusing the view's
         // component restores the event path through tabs → view.
-        auto views = std::vector<Component>{home, universe, terminal, control};
+        auto views = std::vector<Component>{home, universe, terminal, control, log};
         auto setView = [this, views](int v)
         {
             m_view = v;
             views[v]->TakeFocus();
+            if (v == 4)
+                m_log.poll(); // don't wait for the next tick
         };
 
         // View switcher down the far-right edge; the active view's button lights
@@ -71,6 +75,7 @@ namespace ui
             {"Uni", [setView] { setView(1); }, nullptr, [this] { return m_view == 1; }},
             {"Term", [setView] { setView(2); }, nullptr, [this] { return m_view == 2; }},
             {"Ctrl", [setView] { setView(3); }, nullptr, [this] { return m_view == 3; }},
+            {"Log", [setView] { setView(4); }, nullptr, [this] { return m_view == 4; }},
         });
         auto exitButton = Toolbar({
             {"Exit", [&onCommand, &screen] { onCommand("exit"); screen.Exit(); }, nullptr, nullptr},
@@ -100,7 +105,7 @@ namespace ui
             .hints = [this]
             {
                 std::vector<std::pair<std::string, std::string>> hints{
-                    {"1-4", "views"},
+                    {"1-5", "views"},
                 };
                 if (m_view == 0)
                 {
@@ -118,6 +123,12 @@ namespace ui
                 {
                     hints.push_back({"←/→", "adjust"});
                     hints.push_back({"enter", "apply"});
+                }
+                else if (m_view == 4)
+                {
+                    hints.push_back({"↑/↓ wheel", "scroll"});
+                    hints.push_back({"end", "follow"});
+                    hints.push_back({"c", "clear"});
                 }
                 hints.push_back({"esc", m_view == 0 ? "exit" : "back"});
                 return hints;
@@ -155,6 +166,7 @@ namespace ui
                 if (event == Event::Character('2')) { setView(1); return true; }
                 if (event == Event::Character('3')) { setView(2); return true; }
                 if (event == Event::Character('4')) { setView(3); return true; }
+                if (event == Event::Character('5')) { setView(4); return true; }
             }
 
             // Escape backs out to Home; from Home it exits the app.
@@ -171,10 +183,14 @@ namespace ui
         std::atomic<bool> ticking{true};
         std::thread ticker([&]()
                            {
+            int tick = 0;
             while (ticking.load())
             {
                 std::this_thread::sleep_for(std::chrono::seconds(1));
                 onStateChanged();
+                // Device log: fetch new lines every 2 s, only while it's shown.
+                if (m_view == 4 && ++tick % 2 == 0)
+                    m_log.poll();
             } });
 
         screen.Loop(with_keys);

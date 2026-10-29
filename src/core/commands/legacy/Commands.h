@@ -26,11 +26,18 @@ namespace core::legacy
     // (Client::engine.version).
     class Execute
     {
-        static Version versionOf(const std::string &version)
+        static Version versionOf(const core::Client &client)
         {
+            // Protocol 1 (firmware 1.0+) uses the 0.98 reply shapes.
+            if (client.engine.protocol >= 1)
+                return Version::V98;
+            // No protocol field: guess from the version, with or without a 'v'.
+            std::string_view version = client.engine.version;
+            if (version.starts_with('v'))
+                version.remove_prefix(1);
             if (version.starts_with("0.96"))
                 return Version::V96;
-            return Version::V98; // 0.98 and anything newer/unknown
+            return Version::V98;
         }
 
     public:
@@ -56,7 +63,7 @@ namespace core::legacy
             if (data.contains("err"))
                 return false;
 
-            switch (versionOf(client.engine.version))
+            switch (versionOf(client))
             {
             case Version::V96:
                 V96::describe(data, client);
@@ -105,7 +112,7 @@ namespace core::legacy
             if (data.contains("err"))
                 return false;
 
-            switch (versionOf(client.engine.version))
+            switch (versionOf(client))
             {
             case Version::V96:
                 V96::presets(data, fix);

@@ -131,6 +131,7 @@ namespace core
 
                 Client client;
                 client.engine.version = version;
+                client.engine.protocol = jarr.value("protocol", 0);
                 client.wifi.ip = ip;
 
                 int id = 0;
@@ -188,7 +189,8 @@ namespace core
                                      }
                                      else
                                          logger.error("describe parse failed for {}", ip);
-                                 });
+                                 },
+                                 /*retries=*/3);
     }
 
     void Heartbeat::requestPresets(const std::string &ip)

@@ -1,4 +1,6 @@
 #pragma once
+#include <chrono>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <cstdint>
@@ -34,10 +36,19 @@ namespace core::net
         // writes the whole payload. Returns false (and logs) on failure.
         bool send(std::string_view payload);
 
+        // Waits up to `wait` for a full '\n'-terminated line on this socket
+        // (firmware >= 0.99 replies here). nullopt if none yet or the peer
+        // closed; see peerClosed().
+        std::optional<std::string> readLine(std::chrono::milliseconds wait);
+
         bool isOpen() const { return sock_ >= 0; }
+        bool peerClosed() const { return peerClosed_; }
 
     private:
         void closeSocket() noexcept;
+
+        std::string rx_; // received bytes not yet returned as a line
+        bool peerClosed_ = false;
     };
 
 }

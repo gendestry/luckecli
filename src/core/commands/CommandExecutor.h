@@ -41,6 +41,9 @@ namespace core::commands
         // empty selection == "unselected" mode.
         core::SelectionSet m_selection;
 
+        // Per device: the `next` from its last `logs` reply, for `logs new`.
+        std::map<std::string, uint32_t> m_logNext;
+
         bool m_exit = false;
 
         // Every command that flows through resolveCommand() (typed in the CLI or
@@ -66,10 +69,12 @@ namespace core::commands
         bool setpreset(const Args &);
         bool setname(const Args &);
         bool highlight(const Args &);
+        bool setleds(const Args &);
         bool blackout(const Args &);
         bool setcolor(const Args &);
         bool setfan(const Args &);
         bool reboot(const Args &);
+        bool logs(const Args &);
         bool factoryreset(const Args &);
         bool setwifi(const Args &);
         bool describe(const Args &);
@@ -156,6 +161,11 @@ namespace core::commands
         // Tokenize, resolve and dispatch a single line. Returns the handler's
         // result (false on unknown/invalid command).
         bool resolveCommand(const std::string &line);
+
+        // Same, without adding the line to the history. For rapid-fire
+        // commands (slider drags); remember() the end result once instead.
+        bool resolveCommandQuiet(const std::string &line);
+        void remember(const std::string &line) { recordHistory(line); }
 
         // Drive the bound Display's input loop until exit.
         void run();

@@ -1,6 +1,7 @@
 #include "core/net/Connection.h"
 
 #include <sys/socket.h>
+#include <poll.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <unistd.h>
@@ -22,7 +23,8 @@ namespace core::net
     }
 
     Connection::Connection(Connection &&other) noexcept
-        : logger("CONN"), ip_(std::move(other.ip_)), port_(other.port_), sock_(other.sock_)
+        : logger("CONN"), ip_(std::move(other.ip_)), port_(other.port_), sock_(other.sock_),
+          rx_(std::move(other.rx_)), peerClosed_(other.peerClosed_)
     {
         other.sock_ = -1;
     }
@@ -35,9 +37,46 @@ namespace core::net
             ip_ = std::move(other.ip_);
             port_ = other.port_;
             sock_ = other.sock_;
+            rx_ = std::move(other.rx_);
+            peerClosed_ = other.peerClosed_;
             other.sock_ = -1;
         }
         return *this;
+    }
+
+    std::optional<std::string> Connection::readLine(std::chrono::milliseconds wait)
+    {
+        auto takeLine = [this]() -> std::optional<std::string>
+        {
+            size_t end = rx_.find('\n');
+            if (end == std::string::npos)
+                return std::nullopt;
+            std::string line = rx_.substr(0, end);
+            rx_.erase(0, end + 1);
+            if (!line.empty() && line.back() == '\r')
+                line.pop_back();
+            return line;
+        };
+
+        if (auto line = takeLine())
+            return line;
+        if (sock_ < 0 || peerClosed_)
+            return std::nullopt;
+
+        pollfd pfd{sock_, POLLIN, 0};
+        if (::poll(&pfd, 1, static_cast<int>(wait.count())) <= 0)
+            return std::nullopt;
+
+        char buf[4096];
+        ssize_t n = ::recv(sock_, buf, sizeof(buf), 0);
+        if (n <= 0)
+        {
+            // 0 = peer closed; < 0 = error. Either way nothing more comes here.
+            peerClosed_ = true;
+            return std::nullopt;
+        }
+        rx_.append(buf, static_cast<size_t>(n));
+        return takeLine();
     }
 
     void Connection::closeSocket() noexcept

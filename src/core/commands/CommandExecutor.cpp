@@ -90,7 +90,10 @@ void CommandExecutor::run() {
 
 bool CommandExecutor::resolveCommand(const std::string &line) {
     recordHistory(line);
+    return resolveCommandQuiet(line);
+}
 
+bool CommandExecutor::resolveCommandQuiet(const std::string &line) {
     Args args = tokenize(line);
 
     auto cmd = m_registry.resolve(args, mode());
@@ -169,9 +172,13 @@ void CommandExecutor::bindCommands() {
                    "setname <name>", Command::Usable::SELECTED,
                    [this](const Args &a) { return setname(a); });
 
-    m_registry.add("highlight", "Flash the selected fixture",
+    m_registry.add("highlight", "Light the selected fixture(s) white; no argument toggles",
                    "highlight <on/off>?", Command::Usable::SELECTED,
                    [this](const Args &a) { return highlight(a); });
+
+    m_registry.add("setleds", "Set the LED count of the selected fixture (device reboots)",
+                   "setleds <count>", Command::Usable::SELECTED,
+                   [this](const Args &a) { return setleds(a); });
 
     m_registry.add("describe",
                    "Pretty-print describe JSON for selected fixture(s)",
@@ -201,6 +208,11 @@ void CommandExecutor::bindCommands() {
     m_registry.add("reboot", "Reboot the selected device(s)", "reboot",
                    Command::Usable::SELECTED,
                    [this](const Args &a) { return reboot(a); });
+
+    m_registry.add("logs",
+                   "Show the device log (firmware >= 0.99); `new` = only since last time",
+                   "logs <new>?", Command::Usable::SELECTED,
+                   [this](const Args &a) { return logs(a); });
 
     m_registry.add("factoryreset",
                    "Factory-reset the selected device(s) — wipes all config",
@@ -411,6 +423,45 @@ bool CommandExecutor::setpreset(const Args &args) {
     return true;
 }
 
+bool CommandExecutor::setleds(const Args &args) {
+    auto leds = args.getInt(1);
+    if (!leds || *leds < 1 || *leds > 1000) {
+        log.error("Usage: setleds <count>  (1-1000)");
+        return false;
+    }
+    if (m_selection.size() != 1) {
+        log.error("setleds targets a single fixture (selected {})",
+                  m_selection.size());
+        return false;
+    }
+
+    const auto sel = m_selection.front();
+    auto resp = m_sharedState.getESPClient(sel.ip)->sendRequestOpt(
+        support::JSONtemp::stringify("setfixture", "id", sel.fixtureId, "leds",
+                                     *leds),
+        4000ms);
+    if (!resp) {
+        log.error("No response from {} fixture {}", sel.ip, sel.fixtureId);
+        return false;
+    }
+    auto reply = nlohmann::json::parse(*resp, nullptr, false);
+    if (reply.is_discarded() || reply.contains("err")) {
+        log.error("{}: {}", sel.ip,
+                  reply.is_object() ? reply.value("err", *resp) : *resp);
+        return false;
+    }
+
+    m_sharedState.withClient(sel.ip, [&](Client &c) {
+        if (sel.fixtureId >= 0 &&
+            sel.fixtureId < static_cast<int>(c.fixtures.size()))
+            c.fixtures[sel.fixtureId].numLeds = *leds;
+    });
+    const std::string status = reply.value("status", "");
+    okFixture(sel, "leds", std::to_string(*leds) +
+                               (status == "ok, rebooting" ? " (rebooting to apply)" : ""));
+    return true;
+}
+
 bool CommandExecutor::setname(const Args &args) {
     if (!args.has(1)) {
         log.error("Usage: setname <name>");
@@ -493,13 +544,24 @@ bool CommandExecutor::highlight(const Args &args) {
         return false;
     }
 
-    // Default on; `highlight off`/`false`/`0` turns it back off.
-    const bool on = !(args[1] == "off" || args[1] == "false" || args[1] == "0");
+    // `highlight on|off` sets it; no argument toggles each fixture from its
+    // cached state (firmware >= 1.0 takes the value literally).
+    const bool explicitOff = args[1] == "off" || args[1] == "false" || args[1] == "0";
+    const bool explicitOn = args[1] == "on" || args[1] == "true" || args[1] == "1";
 
     // Apply to every selected fixture; one unresponsive device shouldn't stop
     // the rest, so report per-fixture and only fail if none responded.
     bool any = false;
     for (const auto &sel : m_selection) {
+        bool on = explicitOn;
+        if (!explicitOn && !explicitOff) {
+            m_sharedState.withClient(sel.ip, [&](Client &c) {
+                if (sel.fixtureId >= 0 &&
+                    sel.fixtureId < static_cast<int>(c.fixtures.size()))
+                    on = !c.fixtures[sel.fixtureId].highlighted;
+            });
+        }
+
         auto client = m_sharedState.getESPClient(sel.ip);
         auto resp = client->sendRequestOpt(
             support::JSONtemp::stringify("setfixture", "id", sel.fixtureId,
@@ -509,7 +571,15 @@ bool CommandExecutor::highlight(const Args &args) {
             log.error("No response from {} fixture {}", sel.ip, sel.fixtureId);
             continue;
         }
-        okFixture(sel, "highlight", on ? "on" : "off");
+        // Cache what the device reports, so the next toggle flips the right way.
+        auto reply = nlohmann::json::parse(*resp, nullptr, false);
+        const bool now = reply.is_object() ? reply.value("highlighted", on) : on;
+        m_sharedState.withClient(sel.ip, [&](Client &c) {
+            if (sel.fixtureId >= 0 &&
+                sel.fixtureId < static_cast<int>(c.fixtures.size()))
+                c.fixtures[sel.fixtureId].highlighted = now;
+        });
+        okFixture(sel, "highlight", now ? "on" : "off");
         any = true;
     }
     return any;
@@ -536,12 +606,12 @@ bool CommandExecutor::blackout(const Args &) {
 
     std::size_t cleared = 0;
     for (int u : universes) {
-        if (u < 0 || u > 255) {
-            log.error("Universe {} out of sACN range (0-255), skipping", u);
+        if (u < 1 || u > 63999) {
+            log.error("Universe {} out of sACN range (1-63999), skipping", u);
             continue;
         }
         try {
-            Utils::Network::SacnSender sender(static_cast<uint8_t>(u), localIp);
+            Utils::Network::SacnSender sender(static_cast<uint16_t>(u), localIp);
             sender.send(zeros);
             ++cleared;
         } catch (const std::exception &e) {
@@ -616,12 +686,12 @@ bool CommandExecutor::sendBuffers(
     const Utils::Network::IP localIp = Utils::Network::Interfaces::primaryIP();
     std::size_t sent = 0;
     for (auto &[u, buf] : buffers) {
-        if (u < 0 || u > 255) {
-            log.error("Universe {} out of sACN range (0-255), skipping", u);
+        if (u < 1 || u > 63999) {
+            log.error("Universe {} out of sACN range (1-63999), skipping", u);
             continue;
         }
         try {
-            Utils::Network::SacnSender sender(static_cast<uint8_t>(u), localIp);
+            Utils::Network::SacnSender sender(static_cast<uint16_t>(u), localIp);
             sender.send(buf);
             ++sent;
         } catch (const std::exception &e) {
@@ -731,6 +801,54 @@ bool CommandExecutor::reboot(const Args &) {
 
     // The selection points at devices that are now going away.
     m_selection.clear();
+    return true;
+}
+
+bool CommandExecutor::logs(const Args &args) {
+    auto ips = selectedIps();
+    if (ips.empty()) {
+        log.error("Nothing selected");
+        return false;
+    }
+    const bool onlyNew = args[1] == "new";
+
+    for (const auto &ip : ips) {
+        const uint32_t since = onlyNew ? m_logNext[ip] : 0;
+        auto resp = m_sharedState.getESPClient(ip)->sendRequestOpt(
+            support::JSONtemp::stringify("logs", "since", since), 4000ms);
+        if (!resp) {
+            log.error("No response from {}", ip);
+            continue;
+        }
+
+        nlohmann::json data = nlohmann::json::parse(*resp, nullptr, false);
+        if (data.is_discarded() || !data.contains("lines")) {
+            // 0.96 firmware has no log command.
+            log.error("{}: no device log (firmware too old?)", ip);
+            continue;
+        }
+
+        m_logNext[ip] = data.value("next", 0u);
+        log.println("{}{}{} {}log{}", Theme::ip(), ip, Theme::r(), Theme::heading(), Theme::r());
+        if (const uint32_t lost = data.value("lost", 0u))
+            log.println("  {}... {} older lines overwritten{}", Theme::dim(), lost, Theme::r());
+
+        // Lines start with the level letter: D/I/W/E.
+        for (const auto &line : data["lines"]) {
+            const std::string text = line.get<std::string>();
+            const char level = text.empty() ? 'I' : text[0];
+            if (level == 'E')
+                log.println("  {}{}{}", Theme::err(), text, Theme::r());
+            else if (level == 'W')
+                log.println("  {}{}{}", Theme::val(), text, Theme::r());
+            else if (level == 'D')
+                log.println("  {}{}{}", Theme::dim(), text, Theme::r());
+            else
+                log.println("  {}", text);
+        }
+        if (data["lines"].empty())
+            log.println("  {}(nothing new){}", Theme::dim(), Theme::r());
+    }
     return true;
 }
 

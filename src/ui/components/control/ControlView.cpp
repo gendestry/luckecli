@@ -28,22 +28,38 @@ ftxui::Component ControlView::component() {
     };
 
     // Push the current color(s) to the fixtures WITHOUT the executor's per-send
-    // confirmation — we log our own start→end summary instead. In solid mode a
-    // single `setcolor` fills every targeted fixture; in fan mode `setfan`
-    // spreads a gradient from color A to B. With no selection, both apply to all.
-    auto sendQuiet = [this, rgbStr] {
-        if (!m_command)
+    // confirmation or a history entry — we log our own start→end summary and
+    // remember only the final command. In solid mode a single `setcolor` fills
+    // every targeted fixture; in fan mode `setfan` spreads a gradient from color
+    // A to B. With no selection, both apply to all.
+    //
+    // A drag fires one event per mouse move, so sends are throttled to one per
+    // 20 ms; a skipped change is sent when the drag ends (force).
+    auto sendQuiet = [this, rgbStr](bool force) {
+        const auto now = std::chrono::steady_clock::now();
+        if (!force && now - m_lastSend < std::chrono::milliseconds(20)) {
+            m_sendPending = true;
             return;
+        }
+        m_lastSend = now;
+        m_sendPending = false;
+
+        m_lastCommand = m_mode == 1 ? "setfan " + rgbStr(m_picker->rgb()) + " " + rgbStr(m_pickerB->rgb())
+                                    : "setcolor " + rgbStr(m_picker->rgb());
         auto *exec = m_exec ? *m_exec : nullptr;
-        if (exec)
+        if (exec) {
             exec->setColorEcho(false);
-        if (m_mode == 1)
-            m_command("setfan " + rgbStr(m_picker->rgb()) + " " +
-                      rgbStr(m_pickerB->rgb()));
-        else
-            m_command("setcolor " + rgbStr(m_picker->rgb()));
-        if (exec)
+            exec->resolveCommandQuiet(m_lastCommand);
             exec->setColorEcho(true);
+        } else if (m_command) {
+            m_command(m_lastCommand);
+        }
+    };
+    // Sends now and adds the command to the history (discrete changes).
+    auto sendAndRemember = [this, sendQuiet] {
+        sendQuiet(true);
+        if (auto *exec = m_exec ? *m_exec : nullptr)
+            exec->remember(m_lastCommand);
     };
 
     // One-shot log for discrete changes (mode switch, Apply button): just the
@@ -58,17 +74,17 @@ ftxui::Component ControlView::component() {
 
     // Live-apply as any slider moves; the drag's start→end is logged on release
     // (see the CatchEvent wrapper below), so no logging here.
-    m_picker->onChange(sendQuiet);
-    m_pickerB->onChange(sendQuiet);
+    m_picker->onChange([sendQuiet] { sendQuiet(false); });
+    m_pickerB->onChange([sendQuiet] { sendQuiet(false); });
 
     // Solid / Fan mode toggle; re-applies on switch so the output matches.
     std::vector<std::string> modes = {"Solid", "Fan"};
     auto modeOpt = RadioboxOption();
-    modeOpt.on_change = [sendQuiet, logCurrent] { sendQuiet(); logCurrent("mode"); };
+    modeOpt.on_change = [sendAndRemember, logCurrent] { sendAndRemember(); logCurrent("mode"); };
     auto modeBox = Radiobox(modes, &m_mode, modeOpt);
 
     auto applyOpt = ButtonOption::Simple();
-    applyOpt.on_click = [sendQuiet, logCurrent] { sendQuiet(); logCurrent("apply"); };
+    applyOpt.on_click = [sendAndRemember, logCurrent] { sendAndRemember(); logCurrent("apply"); };
     applyOpt.transform = [](const EntryState &s) {
         auto e = text(" Apply ") | border | color(Theme::okColor());
         if (s.focused)
@@ -109,7 +125,7 @@ ftxui::Component ControlView::component() {
         return std::format("{},{},{}", static_cast<int>(c.r),
                            static_cast<int>(c.g), static_cast<int>(c.b));
     };
-    return CatchEvent(view, [this, rgbLogM](Event e) {
+    return CatchEvent(view, [this, rgbLogM, sendQuiet](Event e) {
         if (!e.is_mouse())
             return false;
         const auto &m = e.mouse();
@@ -119,6 +135,8 @@ ftxui::Component ControlView::component() {
             m_dragStartB = m_pickerB->rgb();
         } else if (m.motion == Mouse::Released && m_dragging) {
             m_dragging = false;
+            if (m_sendPending)
+                sendQuiet(true); // the final value, if the throttle skipped it
             const auto endA = m_picker->rgb();
             const auto endB = m_pickerB->rgb();
             auto same = [](const Utils::Colors::RGB &x, const Utils::Colors::RGB &y) {
@@ -133,6 +151,9 @@ ftxui::Component ControlView::component() {
                                   rgbLogM(endA), rgbLogM(m_dragStartB), rgbLogM(endB));
                 else
                     m_log.println("color {} → {}", rgbLogM(m_dragStartA), rgbLogM(endA));
+                // One history entry per drag: the color it ended on.
+                if (auto *exec = m_exec ? *m_exec : nullptr)
+                    exec->remember(m_lastCommand);
             }
         }
         return false;

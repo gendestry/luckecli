@@ -4,6 +4,7 @@
 #include "ui/components/universe/UniverseView.h"
 #include "ui/components/terminal/TerminalView.h"
 #include "ui/components/control/ControlView.h"
+#include "ui/components/log/LogView.h"
 
 #include <functional>
 #include <string>
@@ -39,8 +40,9 @@ namespace ui
         UniverseView m_universe;
         TerminalView m_terminal;
         ControlView m_control;
+        LogView m_log;
 
-        int m_view = 0; // 0=Home, 1=Universe, 2=Terminal, 3=Control
+        int m_view = 0; // 0=Home, 1=Universe, 2=Terminal, 3=Control, 4=Log
     };
 
 }

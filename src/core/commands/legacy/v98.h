@@ -30,6 +30,7 @@ namespace core::legacy
         static void describe(const nlohmann::json &data, core::Client &client)
         {
             client.engine.version = data.value("version", client.engine.version);
+            client.engine.protocol = data.value("protocol", client.engine.protocol);
             client.engine.serial_report = data.value("serial_report_task", false);
             client.engine.wireless_report = data.value("wireless_report_task", false);
             client.engine.wifi_animation = data.value("wifi_animation", false);
@@ -60,6 +61,7 @@ namespace core::legacy
                     fix.numPresets = f.value("numPresets", 0);
                     fix.footprint = f.value("footprint", 0);
                     fix.highlighted = f.value("highlighted", false);
+                    fix.numLeds = f.value("num_leds", 0);
                     client.fixtures.push_back(std::move(fix));
                 }
             }

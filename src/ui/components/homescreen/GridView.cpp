@@ -48,19 +48,31 @@ namespace ui
                     m_screen->PostEvent(Event::Custom); });
         };
 
-        // Commands triggered from the UI (preset pick, field edit) do blocking
-        // network I/O — running them inline would freeze the FTXUI loop. Dispatch
-        // them on a detached thread instead, gated by m_busy so overlapping
-        // requests can't race on the shared ESPClient queue, and post a refresh
-        // once the device responds. m_command is set by the host before component().
+        // UI commands (preset pick, field edits) do blocking network I/O, so they
+        // run on one worker thread, in order. Commands fired while it runs are
+        // queued, not dropped (Apply sends one command per changed field).
         auto dispatch = [this](std::string cmd)
         {
-            if (m_busy.exchange(true))
-                return; // an operation is already in flight; drop this one
-            std::thread([this, cmd = std::move(cmd)]()
+            {
+                std::lock_guard lock(m_queueMutex);
+                m_queue.push_back(std::move(cmd));
+                if (m_busy)
+                    return; // the running worker picks it up
+                m_busy = true;
+            }
+            std::thread([this]()
                         {
-                m_command(cmd);
-                m_busy = false;
+                while (true)
+                {
+                    std::string next;
+                    {
+                        std::lock_guard lock(m_queueMutex);
+                        if (m_queue.empty()) { m_busy = false; break; }
+                        next = std::move(m_queue.front());
+                        m_queue.pop_front();
+                    }
+                    m_command(next);
+                }
                 if (m_refresh) m_refresh(); })
                 .detach();
         };

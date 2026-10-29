@@ -5,6 +5,7 @@
 #include "core/net/ESPClient.h"
 #include "core/domain/SharedState.h"
 #include "core/net/Connection.h"
+#include "core/net/Protocol.h"
 #include "support/util/SafeQueue.h"
 
 #include <future>
@@ -72,15 +73,25 @@ namespace core
 
             // One attempt, then retry-with-backoff on timeout. Covers the device's
             // "not ready right after the previous connection closed" window.
+            // Callers speak protocol 1; translate for a protocol 2 device (the
+            // heartbeat stores its protocol before any request is queued).
+            int protocol = 0;
+            m_sharedState.withClient(ip_, [&](Client &c)
+                                     { protocol = c.engine.protocol; });
+            const bool v2 = protocol >= 2;
+            const std::string request = v2 ? net::Protocol::toV2(job.request) : job.request;
+
             std::optional<std::string> resp;
             for (int attempt = 0; attempt <= job.retries && running_; ++attempt)
             {
                 if (attempt > 0)
                     std::this_thread::sleep_for(job.backoff);
-                resp = doRequest(job.request, job.timeout);
+                resp = doRequest(request, job.timeout);
                 if (resp)
                     break;
             }
+            if (v2)
+                resp = net::Protocol::fromV2(job.request, resp);
 
             if (job.onResponse)
                 job.onResponse(std::move(resp));
@@ -104,9 +115,25 @@ namespace core
         // Do NOT close the request socket yet. The firmware reads + dispatches
         // inside `while (tc.isConnected())`; closing now drops the connection
         // before the request is read, so no response is ever sent. Hold it open
-        // until the reply arrives on the listener (or we time out); `conn`'s
-        // destructor closes it on scope exit, covering every return path.
-        return m_sharedState.getQueue().pop_for(ip_, timeout);
+        // until the reply arrives (or we time out); `conn`'s destructor closes
+        // it on scope exit, covering every return path.
+        //
+        // The reply comes one of two ways, depending on the firmware:
+        //   >= 0.99: on this same socket, as one '\n'-terminated line.
+        //   0.96:    on a new connection to our :12345 (ResponseListener queue).
+        // Watch both, take whichever answers first.
+        const auto deadline = std::chrono::steady_clock::now() + timeout;
+        while (std::chrono::steady_clock::now() < deadline)
+        {
+            if (!conn.peerClosed())
+            {
+                if (auto line = conn.readLine(50ms))
+                    return line;
+            }
+            if (auto resp = m_sharedState.getQueue().pop_for(ip_, 50ms))
+                return resp;
+        }
+        return std::nullopt;
     }
 
     std::optional<std::string> ESPClient::sendRequestOpt(const std::string &request, std::chrono::milliseconds timeout)

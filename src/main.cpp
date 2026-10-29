@@ -35,8 +35,8 @@ int main(int argc, char **argv)
     core::SharedState state;
     Log log("main");
 
-    // auto display = ui::makeDisplay(ui::DisplayType::CLI, state);
-    auto display = ui::makeDisplay(pickDisplay(argc, argv), state);
+    auto display = ui::makeDisplay(ui::DisplayType::CLI, state);
+    // auto display = ui::makeDisplay(pickDisplay(argc, argv), state);
 
     // Route all log output to the chosen display.
     Log::setGlobalCallback([&display](const Loggable &l)

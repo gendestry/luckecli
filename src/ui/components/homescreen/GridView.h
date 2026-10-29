@@ -5,6 +5,8 @@
 #include "ui/components/homescreen/PresetDropdown.h"
 
 #include <atomic>
+#include <deque>
+#include <mutex>
 #include <functional>
 #include <string>
 
@@ -57,7 +59,9 @@ namespace ui
         ftxui::App *m_screen = nullptr;                        // host screen (for posting refreshes)
         std::function<void()> m_refresh;                       // posts a rebuild+repaint on the UI thread
         std::function<bool(const std::string &)> m_command;    // command sink, set by the host
-        std::atomic<bool> m_busy{false};                       // a command is running off-thread
+        std::atomic<bool> m_busy{false};                       // the command worker is running
+        std::mutex m_queueMutex;                               // guards m_queue (and m_busy changes)
+        std::deque<std::string> m_queue;                       // commands waiting for the worker
         bool m_modifier = false;                               // ctrl/shift held on the last mouse event
         bool m_multiMode = false;                              // sticky multi-select toggle (every click adds)
         bool m_showUniverse = false;                           // universe-viewer popup open?

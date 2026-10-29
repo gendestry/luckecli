@@ -34,6 +34,8 @@ namespace core
 
         out << std::format("{}Engine{}\n", Theme::heading(), Theme::r());
         out << std::format("  {}version:{}       {}{}{}\n", Theme::lbl(), Theme::r(), Theme::val(), engine.version, Theme::r());
+        if (engine.protocol)
+            out << std::format("  {}protocol:{}      {}{}{}\n", Theme::lbl(), Theme::r(), Theme::val(), engine.protocol, Theme::r());
         out << std::format("  {}serial print:{}  {}{}{}\n", Theme::lbl(), Theme::r(), Theme::val(), engine.serial_report, Theme::r());
         out << std::format("  {}wifi print:{}    {}{}{}\n", Theme::lbl(), Theme::r(), Theme::val(), engine.wireless_report, Theme::r());
         out << std::format("  {}wifi anim:{}     {}{}{}\n", Theme::lbl(), Theme::r(), Theme::val(), engine.wifi_animation, Theme::r());
@@ -58,6 +60,8 @@ namespace core
                                Theme::lbl(), Theme::r(), Theme::val(), f.address, Theme::r(),
                                Theme::lbl(), Theme::r(), Theme::val(), f.presetIndex, f.numPresets, Theme::r(),
                                Theme::lbl(), Theme::r(), Theme::val(), f.footprint, Theme::r());
+            if (f.numLeds)
+                out << std::format("      {}leds:{} {}{}{}\n", Theme::lbl(), Theme::r(), Theme::val(), f.numLeds, Theme::r());
             for (std::size_t p = 0; p < f.presets.size(); ++p)
             {
                 const bool current = (static_cast<int>(p) == f.presetIndex);

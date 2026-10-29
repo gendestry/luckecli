@@ -11,8 +11,12 @@ set(CMAKE_CXX_STANDARD_REQUIRED True)
 # falls back to the plain compiler if ccache isn't installed.
 find_program(CCACHE_PROGRAM ccache)
 if(CCACHE_PROGRAM)
-    set(CMAKE_CXX_COMPILER_LAUNCHER ${CCACHE_PROGRAM})
-    set(CMAKE_C_COMPILER_LAUNCHER ${CCACHE_PROGRAM})
+    # compiler_check=content: on Nix every compiler has the same mtime, so the
+    # default check can't tell GCC 14 from GCC 16 and hands back objects built
+    # by the other one (mixed std::format internals -> hangs / link errors).
+    set(CCACHE_LAUNCHER ${CMAKE_COMMAND} -E env CCACHE_COMPILERCHECK=content ${CCACHE_PROGRAM})
+    set(CMAKE_CXX_COMPILER_LAUNCHER ${CCACHE_LAUNCHER})
+    set(CMAKE_C_COMPILER_LAUNCHER ${CCACHE_LAUNCHER})
 endif()
 
 # Emit all built libraries (static .a and shared .so) into lib_bin/ at the

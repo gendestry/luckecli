@@ -11,6 +11,7 @@ namespace core
         struct Engine
         {
             std::string version;
+            int protocol = 0; // command API version; 0 = firmware from before it existed
             bool serial_report;
             bool wireless_report;
             bool wifi_animation = false;
@@ -35,6 +36,7 @@ namespace core
             int presetIndex = 0;
             int numPresets = 0;
             int footprint = 0;
+            int numLeds = 0;  // strip LED count (firmware >= 1.0); 0 if unknown
             bool highlighted = false;
             std::vector<std::string> presets; // preset/group names, fetched on demand
         };
